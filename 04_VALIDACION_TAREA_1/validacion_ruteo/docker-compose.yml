@@ -1,0 +1,21 @@
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: ruteo_uav_postgis
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ruteo_uav}
+      POSTGRES_USER: ${POSTGRES_USER:?Define POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./sql/init_postgis.sql:/docker-entrypoint-initdb.d/01_init_postgis.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgis_data:

@@ -1,0 +1,188 @@
+Ya nada más que nada, bueno este proyecto era el tema de la comunicación, la recuperación de comunicación de enlaces en redes METCH de web y por el tema de eso entonces lo que no sabíamos era como abocarlo,
+es causarlo en un contexto quizá más específico para poder abocar esto y bueno el lado al que les mencionó Alex anteriormente era el tema de si...
+¿Qué número eran ustedes?
+Grupo 7
+Grupo 7?
+Sí
+Vamos a poner la presentación aquí
+Sí, sí, sí
+Ya, ese era el de usted
+Sí, hasta el anuncio
+O sea, lo ideal sería tratar de mantener algo para que no partan todos el cero
+Sí, sí, bueno esa es la idea
+Sí, porque igual si no habría que tengo entendido buscar el pay pertenuado y todo el tema, no sé realidad
+Porque el pay per era netamente de anular los drones o era comunicación entre distintos tipos de drones
+Era recuperar la comunicación y de la conexión entre drones cuando uno de los drones era de negado
+Ya era de negado producto de un yámero o algo...
+Sí, producto de un yámero, sí
+Ya, pero al final de recuperarlo ¿por qué hace un switching a otra frecuencia?
+Claro, lo que era la frecuencia era una zona específica y al final la red adoc tenía que volver como hacer las reconexiones lógicas de la comunicación entre todos los drones
+Igual la principal que mostraban era el tema del protocolo
+Claro, sí, el protocolo que ya habían creado, al final era como de comunicación entre cada...
+El protocolo para reconfigurar la conexión entre los distintos drones, con el comanan control...
+El protocolo era como lo más... era como el oferido del pay pertenuado
+Sí, más que el del tema del yámero
+Sí
+Ya, ok
+Entonces, sí, en qué escenarios... porque hay...
+Sorry, es la pérdida conectividad del drone con el comanan control o el drone con otro drone
+No puedo ocupar como puente para el comanan control
+O sea...
+Pero, por qué pregunto eso puede ser muy específico
+Para hacerme una idea de qué escenarios en la vida real podrían ocurrir cosas similares para tratar de tirarlo o intencional por allá
+Sí, no sé si entiendes
+Al final, bueno, el pay perno es tan claro como en un contexto...
+Entonces, que viene la parte interesante que ustedes son técnicos de esta cuestión, la valían, no sé cuánto académico yo no encuentro una bugre
+Claro
+¿Qué está ahí?
+Si esa es la idea
+Yo creo, por lo que entiendo yo, al final era...
+¿Qué pasaba?
+Entrar un drone en una zona "yaming"
+Se perdía la conexión
+Y no había cómo avisarle a otros drones para que no se metan a esas zonas
+Ok
+Entonces, la idea era, se mete el drone
+Entonces, el protocolo hace que el tema es que mezclas las capas
+Es un capa más de bajo nivel
+Sí, el ases...
+Es una alerta
+Entonces, ahí la aviso los demás y los demás saben "ayá, este drone entró a esta zona, entonces hay que evitar esta zona"
+Ya, porque al final se comunicó por otro espectro, que al final el "yaming" no tenía considerado
+Sí
+Para, como me imagino esa cuestión en la cabeza
+Tengo un drone y el drone va mandando un "keep alive" como broadcast
+Informándole al resto "oye, sigo vivo", que al final solo hicimos protocolo de telecomunicaciones
+Si le aplico un "yamer", ya no manda el broadcast
+Por lo tanto, el resto "oye, ya no me mandó", algo le pasó
+"Pu**, entonces no nos sigo para allá", listo
+Porque si alguien piensa en un "yamer", "bueno, estoy cubando un "yamer" en todo el espectro del drone"
+Entonces, ni el de protocolo hago lo mismo que "TCP" o algo para mantener una sesión activa
+Pero lo implemento en "drone"
+"Ah, telecomunicaciones, informática, roces", pues así, sin informático telecomunicaciones
+Y ahí no le encuentras sentido esta cuestión
+Sí, pero finalmente, lo que no cachamos era como ponerlo en un punto específico
+Por ejemplo, no sé, por los demás grupos, no sé, uno era como de temas de terremoto
+Otros eran temas de incendios, creo, o algo así
+En causarlo como, claro, algo por ahí
+Todos eran muy físicos, o sea, todos eran ruteos físicos
+Nosotros lo estábamos viendo desde el lado más de la comunicación de los drones
+No tanto hacia dónde se está moviendo, es como que eso en verdad no nos interesaba mucho
+Sí, a ver, ya sí
+Si el tema es darle la vuelta a esta cuestión, esos son los desafíos interesantes
+Y tener siempre estudiantes que digan "no, no voy a hacer la misma cuestión que el resto", nos vamos a diferenciar
+Entonces, ya, primero
+En qué contextos puede ocurrir el tema de los llaming? Porque al final podríamos seguir el mismo concepto independiente
+Que me cambio de frecuencia o no, podríamos decir
+No, es que igual voy a tener un tiempo entre que pierde conectividad
+Imaginándose que al final todos los drones quieren pasar por los mismos puntos
+O sea, si yo pase por aquí, el otro drone también quiere pasar por acá
+Porque si fuera un puro drone que está dando vueltas, no necesito...
+Si perdió conectividad, no necesito avisarla al resto, entonces es un problema que no existe
+Entonces, ya podríamos tirarlo para el tema de conflicto bélico
+Tanto lo... no sé, tengo aquí un...
+¿Cómo se llama? Un aeropuerto, está yendo desde aviones
+Entonces voy a mandar siempre drones en línea recta, a tirar bombas, que sé yo
+El tema es que tengo mi origen, tengo mi destino, que son puntos claves dentro de la estrategia militar
+Y una vez que vaya uno, como quiero mandar varias ráfagas, pero el drone no puede tener 5000 bombas
+Entonces voy mandando varias ráfagas de drones
+Si es que va uno y desaparece, porque yo sé que tiene que ir y luego volver
+O probablemente siempre mantienen una distancia donde este le manda un beacon
+Diciéndole "Estoy vivo", entonces si está vivo, el otro se mantiene en la misma ruta
+Sí, apenas desaparezca ese beacon, este se detiene
+Porque no tuvo información y tal vez no sé, he tomado otra ruta
+Algo así me imagino, porque si este murió, van a saber "Ah, viene de acá"
+"Puta, ya no recibo el beacon, me voy por otra ruta para que... para agarrar los improvisados"
+Así me lo estoy imaginando, cosa que uno diga
+"Ok, estoy haciendo un ruteo de aquí, en línea recta"
+"Apenas aparece una amenaza" y de hecho probablemente tiene mucho más sentido
+Lo que estamos viendo ahora con ustedes es que los otros que son como siempre "Ah, hagamos un circuito"
+Entonces aquí estoy diciendo "Quiero cumplir el cometido de que todos mis drones siempre lleguen a este punto"
+Y estoy siendo resiliente porque si yo continuará con el segundo drone para acá
+Verder el drone, siendo que el otro día lo perdí y ese noblecho no me sirvió para nada
+Sino que ahora estoy aprendiendo de los errores de un tercero y estoy tomando acciones para evitar que eso vuelva a ocurrir
+Que ese es como el tema de la resiliencia
+Entonces, desde ese punto de vista, como que suena más...
+Entonces, ese drone desapareció, desapareció por llamas, le dispararon, misil tierra aire, lo que sea
+El tema es que como logre modificar esa ruta, gracias a que dejé de recibir el beacon
+Que envaza un protocolo en particular, que tiene que saberse para ver cómo, cuánto tiempo tengo de capacidad de reacción, qué sé yo
+Voy a poder detectar que desapareció, para poder decir "Detente, toma decisiones a partir de que este drone desapareció"
+Y ahí uno puede decir "Mira, el punto objetivo está a 10 kilómetros"
+Entonces voy a decir "Y a esos 10 kilómetros, ¿cuánto me voy a mover para el lado?"
+Siguiendo una circunferencia o alguna forma geométrica en particular, qué sé yo
+Entonces, me voy a ir para el lado, ¿cuántos grados para el lado?
+Puchas, si me voy 10 grados para el lado y me voy de nuevo para acá, quizás que el misil igual me va a detectar
+Tendría que saber cuál es el contexto de esos misiles tierras aéreas que han destruido drones en Ucrania o Rusia
+Ah, no, entonces dado el contexto militar y que sabemos de las guerras con drones que está súper actualizado hoy en día
+Entonces más encima estamos buscando un contexto importante, dado que el gobierno de Chile está actualizando su jefe 15
+También debería tener drones, entonces ahí empezó a inflar tu proyecto, ahora tiene mucho más sentido
+Entonces, mira, este tiene rango de cobertura tanto, entonces nosotros vamos a girar en tanto grado más uno acá
+Y ahora voy a seguir en línea recta, y esa modificación, si bien yo la aprendí, pero yo también tengo que foreguardarla para atrás
+Entonces, así de cuenta es un protocolo, lo que ustedes pueden decir
+Bueno, como estamos viendo solamente el mínimo viable de cómo sería esto
+Se asume que de alguna forma se hace y los otros aprenden, pero acá estamos viendo solamente el cambio de ruta
+Sí
+Y abriría puertas, aquí también diseñen un protocolo, se podría hacer hasta con escape, con lo que sea, y tesis, ahí salió el tiro
+Entonces, hacen ese cambio y la idea es que todo el resto, ahora cuando vengan ya no pasen todos por acá
+Sino que aprendieron de que este pasa también con otro
+Y si les fijáis, todos iban en linita, o sea, este iba con uno acá, desapareció este secuio quieto, pero por detrás también viene uno
+Si este sea por acá, este también se va a venir por acá
+Así me lo imagino, entonces vetamos esa línea, y la vetamos tal vez por un time out, entonces por un día
+Entonces si pasó un día, ahora volvamos a probar, aunque si tengo más opciones, mejor la dejo ahí y sigo probando con otras para no tirarme por ahí de nuevo
+O incluso, podría decir, mira, es que tengo dos tipos de drones, tengo los drones que tienen más bomba y los que son plaseos
+Entonces, tiro uno por acá, y mientras viene este, con este voy por acá
+Entonces, ¿por qué? Porque mi problema era destruir este punto, a través de ruta, entonces mando...
+Tira, pensando en telecomunicaciones, mando un paquete con spoofing, para que piensen de que los estoy atacando desde esta IP
+Pero mientras los tipos están preocupados de que me están atacando esta IP, yo por detrás tengo un telnet o un SH con poco bajo tráfico
+Entonces, le mando un drone por acá, van a estar disparando para acá, están gastando los misiles antidrones y me tiro por acá
+Si no lo habiamos visto, pero eso no...
+Si esa es la instancia que les digo, aprovechen las tutoriales o vengan para preguntarme, eso no ocurre en miles de cuestiones, pero no tengo tiempo para hacer nada
+Si ahora más que nada, eso es como aterrizarlo en algo más específico
+Entonces, tenéis mucho material de Ucrania, tenéis mucho material de...
+Entonces ahí coloquen un escenario, probablemente un escenario bélico, yo elegiría Rusia, Ucrania, que es como el más actual con drones, ¿cacháis?
+Y podrían aprovechar ese contexto para aprender, sobre todo, en profesores de que tratamos de buscar esto y al parecer no hay información de drones
+Ok, déjelo como trabajo futuro, la idea es que en todo paper, ustedes puedan decirme, este paper ataca tal problemática
+Pero generalmente en los papers uno deja como trabajo futuro, que a ustedes también les sirve como una arista, como para darle continuidad al trabajo que podría ser incluso en la tesis
+¿Cacháis?
+No, perdón
+Si ahora nos complicamos mucho en buscar aterrizarlo, porque después nos filmamos...
+Ahora, de nuevo, yo siempre en este curso les digo, chicos ustedes tienen todo, ustedes eligen el tema, ustedes eligen el paper, ustedes eligen el alcance
+Ahora, probablemente en muchos cursos están acostumbrados, tienen que hacer solo esto, esto y esto
+El tema es que por lo menos mi filosofía es tratar de ser el nexo en cuando ustedes vayan al mundo profesional, ustedes les van a decir, hoy tengo esta problemática
+Ya voy, ¿dónde está la bandeja? No, es que acá ya no hay bandeja, entonces en mi instancia por lo menos, en decirles ok, les doy totalmente libertad
+Dense cuenta si son capaces o no, o necesitan un poco ayuda para encaminarlo
+Es como mi rol como acá en mi grupo
+Claro, pero era eso en realidad
+Entonces no sé si con eso puede que les ayude un poco más o el otro grupo no sé si estará afuera, que a 20 minutos
+No sé si vinieron, a ver, claro no
+Les voy 5 minutos, 10 minutos
+Si, no por mi lado yo creo que me aclaro mucho más
+Si, igual sería hacer lo más específico ya, a Rusia o Krania, y ahí abocarlo quizás en una zona en particular
+O...
+Si, una zona probablemente límite, busquen donde, cuáles han sido las zonas con mayor conflicto, donde más han destruido drones
+Cachai, y si, se destruyeron esos drones, bueno y que estaban haciendo esos drones, eran drones de reconocimiento
+Drone, porque al final es muy distinto tener un drone que está reconociendo algo, ver sus algo que sabe la línea donde tiene que ir y devolverse
+Entonces, el ruteo es distinto
+Entonces, digan bien, bueno, que ruteo están haciendo, porque de nuevo el de reconocimiento, si yo voy por acá tengo un espectro de visión
+Lo mismo que una antena directiva, al final dentro de la cabeza es todo telecoinformativo
+Entonces, si voy por acá, después, no saco nada con girar, no sé, 10 centímetros y me doy vuelta porque ya lo escanía
+Entonces, necesito reconocer, ojalá que todo ese espectro sea un polígono de área
+Y al final, quiero que todo este lugar haya pasado por todos esos lados y la intersección del área que estoy reconociendo
+Hay una intersección con todo el área y sea completo que esté
+Pero si voy a atacar, no importa, voy a reconocer todo el lugar, sino que voy de aquí para acá
+Pero ahí ya sería colocar, no, es que tiene que haber un drone de monitoreo, más un drone de ataque
+Ahí depende qué es lo que quieren hacer usted
+Traten siempre de basarse en un paper, mira, encontramos un paper, al parecer está actualizado desde este año
+Pero encontramos que le hacen falta artas mejoras, nosotros aquí venimos a colocar estas mejoras
+Yo ahí la duda que tenía, que siempre me quedó, es que usted nos decía que habían comprado dragón e incluso para probar y todo eso
+A mí eso me complicaba porque ya decía, si vamos a estar trabajando sobre otro país, con la data de ese país por ejemplo
+Dije que tenemos drones y quieren jugar con ellos, o sea, no es parte del curso
+De hecho, en ninguna parte está evaluado eso, porque también los compramos hace poco, pero la idea mía era
+Hagamos un curso donde van a estar viendo trabajo con ruteo, con drones para que, a ver si los motivos
+Ya en día, la profe sabe que esta cuestión está chora, tenemos drones y ustedes pueden programarlos, los algoritmos de ruteo que ya hicieron ahí
+Se los pasan al drone y ahora pueden volar, el tema es que sí, hay semestres donde la primera semana ya están todos los grupos listos
+Ahora todavía, por ejemplo, ustedes todavía no tienen bien claro el tema, entonces ya queda un mes para terminar casi el semestre
+Entonces está como complicado, pero de nuevo, a mí me interesa ver que ojalá hagan un paper, tengan una idea y los drones van a seguir estando
+O sea, no tienes por qué ocupar esos drones dentro de mi curso, si la idea también es potenciar de que quizás que se les prendió la ampolleta
+Y dijeron, ah, a mí está bien interesante, déleos, ocúpelo, si por eso los compramos, no están asociados a ningún curso
+Eso, ya la profe, perfecto, sí, ya ya ya ya ya, claro, bueno, ya, ok, ok, chicos que les vaya bien, buen fin de semana

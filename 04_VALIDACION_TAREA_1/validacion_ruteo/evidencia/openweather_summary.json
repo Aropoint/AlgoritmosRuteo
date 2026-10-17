@@ -1,0 +1,13 @@
+{
+  "lat": -33.45,
+  "lon": -70.66,
+  "temp_c": 13.41,
+  "humidity_pct": 66,
+  "pressure_hpa": 1021,
+  "visibility_m": 10000,
+  "wind_speed_m_s": 2.57,
+  "wind_deg": 150,
+  "wind_gust_m_s": null,
+  "rain_1h_mm": null,
+  "clouds_pct": 98
+}

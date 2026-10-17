@@ -1,0 +1,604 @@
+{
+  "info": {
+    "name": "Validación Ruteo UAV - APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "bbox_s",
+      "value": "-33.60"
+    },
+    {
+      "key": "bbox_w",
+      "value": "-70.80"
+    },
+    {
+      "key": "bbox_n",
+      "value": "-33.30"
+    },
+    {
+      "key": "bbox_e",
+      "value": "-70.50"
+    },
+    {
+      "key": "lat",
+      "value": "-33.45"
+    },
+    {
+      "key": "lon",
+      "value": "-70.66"
+    },
+    {
+      "key": "opensky_client_id",
+      "value": ""
+    },
+    {
+      "key": "opensky_client_secret",
+      "value": ""
+    },
+    {
+      "key": "opensky_token",
+      "value": ""
+    },
+    {
+      "key": "opentopography_key",
+      "value": ""
+    },
+    {
+      "key": "openweather_key",
+      "value": ""
+    },
+    {
+      "key": "opencellid_key",
+      "value": ""
+    },
+    {
+      "key": "gpsjam_date",
+      "value": "2026-09-02"
+    },
+    {
+      "key": "acled_email",
+      "value": ""
+    },
+    {
+      "key": "acled_password",
+      "value": ""
+    },
+    {
+      "key": "acled_token",
+      "value": ""
+    },
+    {
+      "key": "acled_country",
+      "value": "Ukraine"
+    },
+    {
+      "key": "acled_from",
+      "value": "2026-08-01"
+    },
+    {
+      "key": "acled_to",
+      "value": "2026-09-03"
+    },
+    {
+      "key": "openaip_key",
+      "value": ""
+    },
+    {
+      "key": "openaip_country",
+      "value": "CL"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Infraestructura - OpenSky",
+      "item": [
+        {
+          "name": "OAuth2 token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token",
+              "protocol": "https",
+              "host": [
+                "auth",
+                "opensky-network",
+                "org"
+              ],
+              "path": [
+                "auth",
+                "realms",
+                "opensky-network",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{opensky_client_id}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{opensky_client_secret}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){pm.collectionVariables.set('opensky_token',pm.response.json().access_token);}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "States bbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{opensky_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://opensky-network.org/api/states/all?lamin={{bbox_s}}&lomin={{bbox_w}}&lamax={{bbox_n}}&lomax={{bbox_e}}",
+              "protocol": "https",
+              "host": [
+                "opensky-network",
+                "org"
+              ],
+              "path": [
+                "api",
+                "states",
+                "all"
+              ],
+              "query": [
+                {
+                  "key": "lamin",
+                  "value": "{{bbox_s}}"
+                },
+                {
+                  "key": "lomin",
+                  "value": "{{bbox_w}}"
+                },
+                {
+                  "key": "lamax",
+                  "value": "{{bbox_n}}"
+                },
+                {
+                  "key": "lomax",
+                  "value": "{{bbox_e}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "pm.test('states es array o null',()=>{let j=pm.response.json(); pm.expect(j).to.have.property('states');});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Metadata",
+      "item": [
+        {
+          "name": "OpenTopography globaldem",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://portal.opentopography.org/API/globaldem?demtype=SRTMGL3&south={{bbox_s}}&north={{bbox_n}}&west={{bbox_w}}&east={{bbox_e}}&outputFormat=GTiff&API_Key={{opentopography_key}}",
+              "protocol": "https",
+              "host": [
+                "portal",
+                "opentopography",
+                "org"
+              ],
+              "path": [
+                "API",
+                "globaldem"
+              ],
+              "query": [
+                {
+                  "key": "demtype",
+                  "value": "SRTMGL3"
+                },
+                {
+                  "key": "south",
+                  "value": "{{bbox_s}}"
+                },
+                {
+                  "key": "north",
+                  "value": "{{bbox_n}}"
+                },
+                {
+                  "key": "west",
+                  "value": "{{bbox_w}}"
+                },
+                {
+                  "key": "east",
+                  "value": "{{bbox_e}}"
+                },
+                {
+                  "key": "outputFormat",
+                  "value": "GTiff"
+                },
+                {
+                  "key": "API_Key",
+                  "value": "{{opentopography_key}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenWeather current",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.openweathermap.org/data/2.5/weather?lat={{lat}}&lon={{lon}}&appid={{openweather_key}}&units=metric",
+              "protocol": "https",
+              "host": [
+                "api",
+                "openweathermap",
+                "org"
+              ],
+              "path": [
+                "data",
+                "2.5",
+                "weather"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "{{lat}}"
+                },
+                {
+                  "key": "lon",
+                  "value": "{{lon}}"
+                },
+                {
+                  "key": "appid",
+                  "value": "{{openweather_key}}"
+                },
+                {
+                  "key": "units",
+                  "value": "metric"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "pm.test('wind existe',()=>pm.expect(pm.response.json()).to.have.property('wind'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenCellID area size",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://opencellid.org/cell/getInAreaSize?key={{opencellid_key}}&BBOX={{bbox_s}},{{bbox_w}},{{bbox_n}},{{bbox_e}}&format=json",
+              "protocol": "https",
+              "host": [
+                "opencellid",
+                "org"
+              ],
+              "path": [
+                "cell",
+                "getInAreaSize"
+              ],
+              "query": [
+                {
+                  "key": "key",
+                  "value": "{{opencellid_key}}"
+                },
+                {
+                  "key": "BBOX",
+                  "value": "{{bbox_s}},{{bbox_w}},{{bbox_n}},{{bbox_e}}"
+                },
+                {
+                  "key": "format",
+                  "value": "json"
+                }
+              ]
+            },
+            "description": "Si responde 403, documentar la condición de whitelist/contribución como limitación de factibilidad."
+          }
+        },
+        {
+          "name": "OSM Overpass buildings (fallback)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "https://overpass-api.de/api/interpreter",
+              "protocol": "https",
+              "host": [
+                "overpass-api",
+                "de"
+              ],
+              "path": [
+                "api",
+                "interpreter"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "data",
+                  "value": "[out:json][timeout:60];(way[\"building\"]({{bbox_s}},{{bbox_w}},{{bbox_n}},{{bbox_e}});relation[\"building\"]({{bbox_s}},{{bbox_w}},{{bbox_n}},{{bbox_e}}););out geom;"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Amenazas",
+      "item": [
+        {
+          "name": "GPSJam CSV diario",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://gpsjam.org/data/{{gpsjam_date}}-h3_4.csv",
+              "protocol": "https",
+              "host": [
+                "gpsjam",
+                "org"
+              ],
+              "path": [
+                "data",
+                "{{gpsjam_date}}-h3_4.csv"
+              ]
+            },
+            "description": "Endpoint de dataset observado, no API REST documentada. Si la fecha no existe, usar un día anterior."
+          }
+        },
+        {
+          "name": "ACLED OAuth token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "https://acleddata.com/oauth/token",
+              "protocol": "https",
+              "host": [
+                "acleddata",
+                "com"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{acled_email}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{acled_password}}"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "acled"
+                },
+                {
+                  "key": "scope",
+                  "value": "authenticated"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){pm.collectionVariables.set('acled_token',pm.response.json().access_token);}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ACLED events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{acled_token}}"
+              }
+            ],
+            "url": {
+              "raw": "https://acleddata.com/api/acled/read?_format=json&country={{acled_country}}&event_date={{acled_from}}%7C{{acled_to}}&event_date_where=BETWEEN&limit=100",
+              "protocol": "https",
+              "host": [
+                "acleddata",
+                "com"
+              ],
+              "path": [
+                "api",
+                "acled",
+                "read"
+              ],
+              "query": [
+                {
+                  "key": "_format",
+                  "value": "json"
+                },
+                {
+                  "key": "country",
+                  "value": "{{acled_country}}"
+                },
+                {
+                  "key": "event_date",
+                  "value": "{{acled_from}}|{{acled_to}}"
+                },
+                {
+                  "key": "event_date_where",
+                  "value": "BETWEEN"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "pm.test('data existe',()=>pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAIP airspaces",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-openaip-api-key",
+                "value": "{{openaip_key}}"
+              }
+            ],
+            "url": {
+              "raw": "https://api.core.openaip.net/api/airspaces?country={{openaip_country}}&page=1&limit=100",
+              "protocol": "https",
+              "host": [
+                "api",
+                "core",
+                "openaip",
+                "net"
+              ],
+              "path": [
+                "api",
+                "airspaces"
+              ],
+              "query": [
+                {
+                  "key": "country",
+                  "value": "{{openaip_country}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

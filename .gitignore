@@ -1,0 +1,39 @@
+# Entornos y archivos locales de Python
+/venv/
+**/.venv/
+**/__pycache__/
+*.py[cod]
+**/.pytest_cache/
+
+# Credenciales: nunca subir valores locales
+**/.env
+**/.env.*
+!**/.env.example
+**/credentials.json
+**/Credentials/
+*.pem
+*.p12
+
+# Salidas locales y archivos temporales
+*.log
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.toc
+*.out
+*.bbl
+*.blg
+**/.DS_Store
+
+# Datos externos descargados: se regeneran mediante los scripts
+/04_VALIDACION_TAREA_1/validacion_ruteo/evidencia/*
+!/04_VALIDACION_TAREA_1/validacion_ruteo/evidencia/informe_pruebas.md
+!/04_VALIDACION_TAREA_1/validacion_ruteo/evidencia/resumen_validacion.json
+!/04_VALIDACION_TAREA_1/validacion_ruteo/evidencia/opentopography_stats.json
+!/04_VALIDACION_TAREA_1/validacion_ruteo/evidencia/openweather_summary.json
+!/04_VALIDACION_TAREA_1/validacion_ruteo/evidencia/opentopography_dem.png
+
+# Respaldo antiguo y grabación local; la transcripción sí se comparte
+/04_VALIDACION_TAREA_1/validacion_ruteo_uav.zip
+/02_REUNION_PROFESOR/Charla_profesor.mp4

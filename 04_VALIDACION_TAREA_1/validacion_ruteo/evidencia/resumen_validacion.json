@@ -1,0 +1,58 @@
+[
+  {
+    "script": "01_opensky.py",
+    "ok": true,
+    "returncode": 0,
+    "stdout_tail": "OAuth2 OpenSky: OK (token obtenido; no se imprime).\nConsulta OpenSky con bbox configurado.\nHTTP 200\nRate headers: {'X-Rate-Limit-Remaining': '3990'}\nBBOX sin posiciones válidas; reintentando consulta global autenticada con datos reales de OpenSky.\nHTTP 200\nRate headers: {'X-Rate-Limit-Remaining': '3986'}\nNodos/posiciones válidas: 7771 -> evidencia/opensky_nodes.csv\n",
+    "stderr_tail": ""
+  },
+  {
+    "script": "02_opentopography.py",
+    "ok": true,
+    "returncode": 0,
+    "stdout_tail": "HTTP 200 Content-Type application/octet-stream\n{\n  \"shape\": [\n    360,\n    360\n  ],\n  \"crs\": \"EPSG:4326\",\n  \"bounds\": [\n    -70.80041666669148,\n    -33.59958333331206,\n    -70.50041666669155,\n    -33.29958333331213\n  ],\n  \"min_m\": 440.0,\n  \"max_m\": 1881.0,\n  \"mean_m\": 643.7796913580247,\n  \"sample_point\": {\n    \"lat\": -33.45,\n    \"lon\": -70.66,\n    \"elevation_m\": 552.0\n  }\n}\nArchivos: evidencia/terreno.tif, opentopography_stats.json, opentopography_dem.png\n",
+    "stderr_tail": ""
+  },
+  {
+    "script": "03_openweather.py",
+    "ok": true,
+    "returncode": 0,
+    "stdout_tail": "HTTP 200\n{'lat': -33.45, 'lon': -70.66, 'temp_c': 13.79, 'humidity_pct': 66, 'pressure_hpa': 1021, 'visibility_m': 10000, 'wind_speed_m_s': 2.57, 'wind_deg': 150, 'wind_gust_m_s': None, 'rain_1h_mm': None, 'clouds_pct': 98}\nEvidencia: openweather_raw.json + openweather_summary.json\n",
+    "stderr_tail": ""
+  },
+  {
+    "script": "04_opencellid.py",
+    "ok": true,
+    "returncode": 0,
+    "stdout_tail": "getInAreaSize HTTP 200\nBBOX demasiado grande para OpenCellID; reintentando con bbox pequeño centrado en POINT_LAT/POINT_LON.\ngetInAreaSize retry HTTP 200\nConteo: {'count': 2333}\ngetInArea HTTP 200\nCeldas detalladas guardadas: 50\n",
+    "stderr_tail": ""
+  },
+  {
+    "script": "04b_osm_buildings_fallback.py",
+    "ok": true,
+    "returncode": 0,
+    "stdout_tail": "HTTP 200\nElementos OSM: 237572; polígonos simples exportados: 236791\nEvidencia: osm_buildings.geojson (base geoespacial con Polygon)\n",
+    "stderr_tail": ""
+  },
+  {
+    "script": "05_gpsjam.py",
+    "ok": true,
+    "returncode": 0,
+    "stdout_tail": "URL https://gpsjam.org/data/2026-09-03-h3_4.csv HTTP 200\nFilas 48781 Polígonos 48781 %bad>10: 509\nCAVEAT: GPSJam infiere degradación GNSS desde ADS-B; no demuestra jamming de la radio de datos 2.4 GHz.\n",
+    "stderr_tail": ""
+  },
+  {
+    "script": "06_acled.py",
+    "ok": true,
+    "returncode": 0,
+    "stdout_tail": "Token HTTP 200\nAPI HTTP 200\nSin eventos en rango configurado; reintentando con fecha disponible reportada por ACLED: 2025-09-04.\nAPI HTTP 200\nEventos: 235; puntos válidos: 235\nPara ruteo: convertir puntos a buffers con radio/ventana temporal EXPLÍCITOS; ACLED no mide interferencia RF.\n",
+    "stderr_tail": ""
+  },
+  {
+    "script": "07_openaip.py",
+    "ok": true,
+    "returncode": 0,
+    "stdout_tail": "page 1 HTTP 200\nAirspaces descargados: 36; Restricted/Danger/Prohibited con polígonos: 27\nEvidencia: /home/aropunto/Escritorio/Universidad/Tareas/AlgoritmosRuteo/validacion_ruteo_uav/validacion_ruteo/evidencia/openaip_restricted.geojson\n",
+    "stderr_tail": ""
+  }
+]
