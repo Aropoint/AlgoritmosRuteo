@@ -106,10 +106,16 @@ def _nodo_tabla(sub, tabla: str, columnas, pk, con_fk) -> None:
 
 
 def dibujar(columnas, pk, fk) -> graphviz.Digraph:
-    # Curvas (splines por defecto): esquivan las cajas y se pueden anclar a la fila exacta de cada
-    # columna, cosa que splines=ortho no hace. newrank=true es imprescindible para que rank=same
-    # funcione entre clusters distintos.
-    dot = graphviz.Digraph("bd", graph_attr={"rankdir": "LR", "newrank": "true",
+    # splines=polyline: tramos rectos trazados por el espacio libre entre las cajas. Usa el mismo
+    # cálculo de camino que las curvas (busca un pasillo vacío y lo recorre), pero lo dibuja con
+    # segmentos en vez de bézier, y respeta el anclaje a la fila exacta.
+    #
+    # No se usa splines=ortho, que daría quiebres en ángulo recto: su router no sabe salir de un
+    # PORT, que es un punto en el costado de una caja a media altura, y termina trazando segmentos
+    # por encima de las tablas vecinas. Manhattan y anclaje por fila son incompatibles en graphviz.
+    #
+    # newrank=true es imprescindible para que rank=same funcione entre clusters distintos.
+    dot = graphviz.Digraph("bd", graph_attr={"rankdir": "LR", "newrank": "true", "splines": "polyline",
                                              "fontname": "Helvetica", "nodesep": "0.5", "ranksep": "1.6",
                                              "label": LEYENDA, "labelloc": "t", "fontsize": "18"},
                            node_attr={"shape": "plaintext", "fontname": "Helvetica", "fontsize": "10"},
