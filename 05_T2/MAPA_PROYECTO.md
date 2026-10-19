@@ -91,7 +91,10 @@ La historia del proyecto en tres pasos:
 
 ## 3. Qué falta para cumplir la rúbrica (resumen)
 
-Actualizado el 19 de octubre de 2026. Todo lo marcado "escrito" está implementado, pero **aún no se ha ejecutado en Docker**. El detalle, criterio por criterio, está en [ENTREGA_TAREA2.md](ENTREGA_TAREA2.md).
+Actualizado el 19 de octubre de 2026. Todo lo marcado "escrito" está implementado y **ya se ejecutó
+en Docker**: `python main.py` completó los 18 pasos del pipeline con código 0 y las seis fuentes
+externas respondieron (números en [README.md](README.md#estado)). El detalle, criterio por criterio,
+está en [ENTREGA_TAREA2.md](ENTREGA_TAREA2.md).
 
 | Rúbrica | Estado |
 |---|---|

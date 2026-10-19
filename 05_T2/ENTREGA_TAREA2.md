@@ -2,7 +2,15 @@
 
 La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guía indica qué archivo lo cumple y qué mostrar en la diapositiva. Puntaje total: 60.
 
-> **Estado:** todo está implementado, pero **la ejecución completa con Docker aún no se ha probado**. Antes de presentar, hay que correr `python main.py`, revisar el resumen del pipeline y capturar las pantallas que pide esta guía.
+> **Estado (19 de octubre de 2026):** la ejecución completa con Docker **ya se probó**: `python main.py`
+> terminó con código 0, los 18 pasos del pipeline en `ok` y las seis fuentes externas respondieron.
+> El detalle de los números obtenidos está en [README.md](README.md#estado). Falta capturar las
+> pantallas que pide esta guía y resolver el pendiente de los focos de evaluación (README, §Estado).
+>
+> Cuidado al preparar la presentación: el paso de Overpass tardó 614 s (el servidor principal
+> devolvió HTTP 502 y respondió el espejo). Conviene correr `python main.py` con antelación y,
+> en la demo, usar `python main.py --sin-descarga` o `--solo-sitio`. El sitio carga Leaflet desde
+> `unpkg` y los *tiles* desde OSM: la demostración necesita internet en el navegador.
 
 ## Proceso ETL completo (lo que pide el enunciado)
 

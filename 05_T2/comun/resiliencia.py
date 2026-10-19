@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from comun.ajustes import bbox
+from comun.ajustes import BUFFER_KM, bbox
 from ruteo.algoritmos import Ruta
 from ruteo.config import SEMILLAS, Configuracion, ParametrosFallas, Preferencias
 from ruteo.fallas import generar_escenario, generar_focos
@@ -28,7 +28,10 @@ from ruteo.metricas import diferencial, mcnemar_exacta, tasa
 from ruteo.pesos import Viento, aristas_excluidas
 from ruteo.simulador import ESTRATEGIAS, ejecutar_mision, largo_minimo_mision
 
-# En orden de preferencia; se usa la primera que tenga puntos dentro del AOI.
+# En orden de preferencia; se usa la primera que tenga puntos en la ventana de búsqueda.
+# La ventana es el AOI + BUFFER_KM, la MISMA con que Amenazas/*.py filtró las descargas: si aquí se
+# usara el AOI estricto, los focos que caen en el anillo del buffer serían invisibles y la primera
+# consulta devolvería vacío, haciendo caer la selección al período histórico (ver focos_bd).
 CONSULTAS_FOCOS = [
     ("incendios_guerra_evaluacion",
      "SELECT ST_Y(geom), ST_X(geom) FROM amz_incendios WHERE guerra AND periodo = 'evaluacion'"
@@ -42,8 +45,14 @@ CONSULTAS_FOCOS = [
 
 
 def focos_bd(conn, g: Grafo) -> tuple[list[tuple[float, float]], str]:
-    """Focos de amenaza dentro del AOI, en km locales. Sin datos reales, focos sintéticos."""
-    sur, oeste, norte, este = bbox(0.0)
+    """Focos de amenaza en el AOI + BUFFER_KM, en km locales. Sin datos reales, focos sintéticos.
+
+    La ventana incluye el buffer a propósito: una falla centrada justo fuera del AOI igual alcanza
+    tramos de la malla, y son los incendios del período de evaluación los que deben originar las
+    fallas (PROPUESTA_TECNICA §2). Con el AOI estricto esa primera consulta puede quedar vacía y la
+    evaluación terminaría usando los mismos incendios históricos que fijaron los pesos de riesgo.
+    """
+    sur, oeste, norte, este = bbox(BUFFER_KM)
     for origen, consulta in CONSULTAS_FOCOS:
         filas = conn.execute(consulta, (oeste, sur, este, norte)).fetchall()
         if filas:

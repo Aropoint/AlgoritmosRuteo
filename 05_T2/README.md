@@ -85,9 +85,70 @@ Ninguna de las seis fuentes externas pide credenciales.
 
 | Hecho | Pendiente |
 |---|---|
-| Núcleo, simulador, métricas y experimento con ablaciones (conjunto de ajuste), con pruebas | **Primera ejecución completa con Docker** (`python main.py`): todo lo de Docker está escrito, pero **aún no se ha ejecutado** |
-| Docker, `schema.sql`, cargadores, pesos en SQL, `pgr_dijkstra` / `pgr_KSP`, diagrama, sitio Leaflet y `main.py` | Revisar que las seis fuentes respondan y ajustar lo que falle |
-| ETL de 3 metadata y 3 amenazas con su documento de estructura | Corrida única sobre el conjunto de evaluación (decisión del grupo) |
-| | Presentación (guía en ENTREGA_TAREA2.md) y subida a GitLab UDP |
+| Núcleo, simulador, métricas y experimento con ablaciones (conjunto de ajuste), con pruebas | **Regenerar rutas y evaluación** tras el arreglo de los focos (ver el hallazgo más abajo) |
+| Docker, `schema.sql`, cargadores, pesos en SQL, `pgr_dijkstra` / `pgr_KSP`, diagrama, sitio Leaflet y `main.py` | Corrida única sobre el conjunto de evaluación (decisión del grupo) |
+| ETL de 3 metadata y 3 amenazas con su documento de estructura | Presentación (guía en ENTREGA_TAREA2.md) y subida a GitLab UDP |
+| **Primera ejecución completa con Docker** (`python main.py`, 19-oct-2026): los 18 pasos en `ok` y las seis fuentes externas respondieron | |
+
+### Resultado de la primera corrida completa (19 de octubre de 2026)
+
+`python main.py` terminó con código 0 y los 18 pasos en `ok` (≈13 min, de los cuales 10 fueron Overpass).
+
+| Qué | Valor obtenido |
+|---|---|
+| Motor | PostGIS 3.5.2, pgRouting 3.8.0; 13 tablas creadas |
+| Infraestructura | 196 nodos, 618 aristas (374,18 km), misión `[15, 131, 65, 151, 181]` |
+| Metadata | 33.593 edificios OSM (1.022 con altura) · 814 puntos de elevación (0–57 m) · 720 horas de viento (mediana 6,92 m/s desde 4,5°) |
+| Amenazas | 7 celdas GPSJam (máx. 0,3333 de días en rojo) · 41 incendios de guerra (26 históricos, 15 de evaluación) · 65 eventos UCDP |
+| Pesos | 179 aristas con edificio en el buffer (máx. 77 m); riesgo medio 0,4511 |
+| Rutas de ejemplo (15 → 181) | Dijkstra 8,462 y 9,166 km · propuesta 8,462 y 8,587 km |
+| Resiliencia (100 escenarios, 3 fallas) | R_par 0,91 / 0,89 · R_misión A 0,91, D 1,00, C 1,00 · ΔR(C−A) = 9 pp (p = 0,0039), ΔR(C−D) = 0 pp |
+| Pruebas unitarias | 28/28 OK en local y dentro de la imagen |
+
+Se confirma el resultado preliminar: **C supera a A pero empata con la ablación D.**
+
+Reproducir sin volver a descargar: `python main.py --sin-descarga` (Overpass tardó 614 s y el
+servidor principal respondió HTTP 502; el espejo `overpass.kumi.systems` salvó el paso).
+
+### Hallazgo de la primera corrida: los focos de las fallas salían del período equivocado
+
+**Qué pasaba.** Los incendios de guerra cumplen dos papeles deliberadamente separados
+(PROPUESTA_TECNICA §2): los del **período histórico** fijan el peso `r_incendios` de cada tramo, y
+los del **período de evaluación** son los focos de las fallas simuladas. Separarlos es lo que evita
+evaluar el método con los mismos datos que ajustaron sus pesos.
+
+**La causa.** `Amenazas/incendios_guerra.py` descarga los incendios del AOI **más `BUFFER_KM`**
+(5 km), pero `comun/resiliencia.py` buscaba los focos dentro del **AOI estricto** (`bbox(0.0)`).
+Los 15 incendios del período de evaluación cayeron todos en el anillo del buffer: ninguno quedaba
+dentro del AOI, la primera consulta de `CONSULTAS_FOCOS` devolvía vacío y `focos_bd` caía al
+*fallback*, usando 3 incendios **históricos**, los mismos que habían fijado `r_incendios`.
+
+Comprobación en la BD de la corrida del 19 de octubre:
+
+```sql
+SELECT periodo, count(*) AS total,
+       count(*) FILTER (WHERE geom && ST_MakeEnvelope(31.950,46.945,32.040,47.005,4326)) AS dentro_aoi
+FROM amz_incendios WHERE guerra GROUP BY periodo;
+--  evaluacion | 15 | 0     <- ninguno dentro del AOI estricto
+--  historico  | 26 | 3     <- el fallback que terminaba usándose
+```
+
+El sitio lo dejaba a la vista en el panel de resultados: «Focos de las fallas:
+incendios_guerra_historicos (3)».
+
+**El arreglo.** `focos_bd` ahora busca en `bbox(BUFFER_KM)`, la misma ventana con que las fuentes de
+`Amenazas/` filtraron sus descargas. Además es lo correcto físicamente: una falla centrada justo
+fuera del AOI igual alcanza tramos de la malla.
+
+**Consecuencia para los números.** La tabla de más arriba y los JSON de `resultados/` se produjeron
+**antes** de este arreglo, con focos históricos. Hay que **regenerar las rutas de ejemplo y la
+evaluación** antes de presentar:
+
+```bash
+docker compose --profile tareas run --rm app python BD/rutas_ejemplo.py
+```
+
+Es esperable que ΔR(C−A) cambie: con focos históricos las fallas caían sobre los tramos que el
+método ya evitaba por tener `r_incendios` alto, lo que favorecía a la propuesta.
 
 **Resultado preliminar principal:** C supera a Dijkstra (A) en hasta +22 pp de misiones completadas, pero **no** supera a la ablación D (Dijkstra que replanifica). El detalle está en PROPUESTA_TECNICA §9.
