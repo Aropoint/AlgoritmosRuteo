@@ -28,6 +28,23 @@ GRUPOS = [  # (título, color, prefijo o nombres)
     ("Soporte", "#f3f4f6", ("fuentes", "parametros_pesos")),
 ]
 
+# Disposición en rejilla: una lista por columna (de izquierda a derecha) con los grupos
+# apilados de arriba a abajo. Sin esto, dot encadena los grupos por sus claves foráneas y
+# el diagrama sale como una sola tira vertical, imposible de proyectar.
+COLUMNAS = [
+    ["Resultados"],
+    ["Infraestructura"],
+    ["Amenazas", "Soporte"],
+    ["Metadata"],
+]
+
+# parametros_pesos no tiene clave foránea: es la tabla de constantes que lee BD/pesos.sql
+# para calcular las columnas de riesgo y restricción de `aristas`. Sin esta arista el lector
+# la ve suelta y no entiende para qué está. Se dibuja punteada para no confundirla con una FK.
+RELACIONES_LOGICAS = [
+    ("parametros_pesos", "aristas", "BD/pesos.sql"),
+]
+
 
 def _grupo(tabla: str) -> int:
     for i, (_, _, claves) in enumerate(GRUPOS):
@@ -67,32 +84,72 @@ def leer_catalogo(conn):
     return columnas, pk, fk
 
 
+def _nodo_tabla(sub, tabla: str, columnas, pk, con_fk) -> None:
+    filas = [f'<TR><TD COLSPAN="2" BGCOLOR="#1f2937"><FONT COLOR="white"><B>{tabla}</B></FONT></TD></TR>']
+    for columna, tipo, no_nulo in columnas[tabla]:
+        marcas = ("PK " if columna in pk.get(tabla, ()) else "") + ("FK " if (tabla, columna) in con_fk else "")
+        nombre = f"<B>{html.escape(columna)}</B>" if marcas.startswith("PK") else html.escape(columna)
+        tipo_txt = html.escape(tipo) + ("" if no_nulo else " ?")
+        filas.append(f'<TR><TD ALIGN="LEFT" PORT="{columna}">{marcas}{nombre}</TD>'
+                     f'<TD ALIGN="LEFT"><FONT COLOR="#555555">{tipo_txt}</FONT></TD></TR>')
+    etiqueta = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" BGCOLOR="white">' + "".join(filas) + "</TABLE>>"
+    sub.node(tabla, label=etiqueta)
+
+
 def dibujar(columnas, pk, fk) -> graphviz.Digraph:
-    dot = graphviz.Digraph("bd", graph_attr={"rankdir": "LR", "fontname": "Helvetica", "nodesep": "0.4",
-                                             "ranksep": "1.1", "label": "Modelo de datos: ruteo resiliente de UAV",
+    # splines=ortho: tramos rectos con quiebres en ángulo recto, más fáciles de seguir que las curvas.
+    # newrank=true es imprescindible para que rank=same funcione entre clusters distintos.
+    dot = graphviz.Digraph("bd", graph_attr={"rankdir": "LR", "newrank": "true", "splines": "ortho",
+                                             "fontname": "Helvetica", "nodesep": "0.5", "ranksep": "1.6",
+                                             "label": "Modelo de datos: ruteo resiliente de UAV",
                                              "labelloc": "t", "fontsize": "18"},
                            node_attr={"shape": "plaintext", "fontname": "Helvetica", "fontsize": "10"},
                            edge_attr={"color": "#555555", "arrowhead": "crow", "arrowtail": "tee", "dir": "both"})
     con_fk = {(t, c) for t, c, _, _ in fk}
-    por_grupo: dict[int, list[str]] = {}
+    por_titulo: dict[str, list[str]] = {}
     for tabla in columnas:
-        por_grupo.setdefault(_grupo(tabla), []).append(tabla)
-    for i, tablas in sorted(por_grupo.items()):
-        titulo, color, _ = GRUPOS[i]
-        with dot.subgraph(name=f"cluster_{i}") as sub:
-            sub.attr(label=titulo, style="rounded,filled", color="#999999", fillcolor=color)
-            for tabla in sorted(tablas):
-                filas = [f'<TR><TD COLSPAN="2" BGCOLOR="#1f2937"><FONT COLOR="white"><B>{tabla}</B></FONT></TD></TR>']
-                for columna, tipo, no_nulo in columnas[tabla]:
-                    marcas = ("PK " if columna in pk.get(tabla, ()) else "") + ("FK " if (tabla, columna) in con_fk else "")
-                    nombre = f"<B>{html.escape(columna)}</B>" if marcas.startswith("PK") else html.escape(columna)
-                    tipo_txt = html.escape(tipo) + ("" if no_nulo else " ?")
-                    filas.append(f'<TR><TD ALIGN="LEFT" PORT="{columna}">{marcas}{nombre}</TD>'
-                                 f'<TD ALIGN="LEFT"><FONT COLOR="#555555">{tipo_txt}</FONT></TD></TR>')
-                etiqueta = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" BGCOLOR="white">' + "".join(filas) + "</TABLE>>"
-                sub.node(tabla, label=etiqueta)
+        por_titulo.setdefault(GRUPOS[_grupo(tabla)][0], []).append(tabla)
+    indice = {titulo: i for i, (titulo, _, _) in enumerate(GRUPOS)}
+
+    # Los clusters se declaran en el orden de COLUMNAS: dentro de una misma columna, ese orden
+    # es el que dot usa para apilarlos de arriba a abajo.
+    for col in COLUMNAS:
+        for titulo in col:
+            tablas = sorted(por_titulo.get(titulo, []))
+            if not tablas:
+                continue
+            i = indice[titulo]
+            with dot.subgraph(name=f"cluster_{i}") as sub:
+                sub.attr(label=titulo, style="rounded,filled", color="#999999", fillcolor=GRUPOS[i][1])
+                for tabla in tablas:
+                    _nodo_tabla(sub, tabla, columnas, pk, con_fk)
+
+    # Cada columna es un rank, y una cadena invisible fija su orden de izquierda a derecha.
+    representantes = []
+    for col in COLUMNAS:
+        tablas_col = [t for titulo in col for t in sorted(por_titulo.get(titulo, []))]
+        if not tablas_col:
+            continue
+        with dot.subgraph() as mismo:
+            mismo.attr(rank="same")
+            for tabla in tablas_col:
+                mismo.node(tabla)
+        representantes.append(tablas_col[0])
+    for origen, destino in zip(representantes, representantes[1:]):
+        dot.edge(origen, destino, style="invis")
+
+    # constraint=false: las FK ya no deciden la posición, solo se dibujan sobre la rejilla.
+    # Se unen tabla con tabla y no fila con fila: anclar a un PORT hace que splines=ortho deje de
+    # esquivar las cajas y las líneas terminen cruzando por encima de otras tablas. Qué columna es
+    # la clave foránea se sigue leyendo en la marca FK de cada fila.
     for tabla, columna, ref, columna_ref in fk:
-        dot.edge(f"{ref}:{columna_ref}", f"{tabla}:{columna}")
+        dot.edge(ref, tabla, constraint="false")
+    for origen, destino, etiqueta in RELACIONES_LOGICAS:
+        if origen in columnas and destino in columnas:
+            # xlabel y no label: splines=ortho no sabe dibujar etiquetas sobre la arista.
+            dot.edge(origen, destino, constraint="false", style="dashed", color="#9ca3af",
+                     arrowhead="vee", arrowtail="none", dir="forward",
+                     xlabel=etiqueta, fontsize="9", fontcolor="#6b7280")
     return dot
 
 
