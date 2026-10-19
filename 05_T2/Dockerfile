@@ -5,9 +5,10 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONIOENCODING=utf-8 \
     PYTHONDONTWRITEBYTECODE=1
 
-# graphviz: dibuja el diagrama de la BD (rúbrica punto 0)
+# graphviz dibuja el diagrama de la BD (rúbrica punto 0); librsvg2-bin aporta rsvg-convert, que
+# rasteriza a PNG el SVG una vez que BD/diagrama_bd.py le reemplaza el trazado de las aristas.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends graphviz \
+    && apt-get install -y --no-install-recommends graphviz librsvg2-bin \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
