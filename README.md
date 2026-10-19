@@ -17,6 +17,7 @@ Repositorio académico del grupo 7. Aquí están los antecedentes, el código de
 | [02_REUNION_PROFESOR/](02_REUNION_PROFESOR/) | Transcripción de la reunión y guion anterior a ella. La grabación queda solo en el equipo local. |
 | [03_TAREA_1/](03_TAREA_1/README.md) | Informe entregado, fuente LaTeX, referencia chilena sobre jamming y pruebas iniciales. Es material histórico. |
 | [04_VALIDACION_TAREA_1/](04_VALIDACION_TAREA_1/REPRODUCIBILIDAD_Y_DATOS.md) | Scripts, SQL, Docker, resultados resumidos y guía para reproducir la validación de fuentes. |
+| [05_T2/](05_T2/README.md) | **Propuesta vigente:** ruteo físico resiliente (Mykolaiv). Núcleo Python con Dijkstra, Yen, selección resiliente, replanificación, simulador de fallas y métricas; mapa del repo y propuesta técnica. |
 
 La Tarea 1 tomó como base **CLUN-LSR**, que recupera caminos de comunicación entre UAV. El enfoque actual usa la pérdida de reporte como señal para **replanificar una trayectoria física de reconocimiento**. Son problemas relacionados, pero sus grafos, algoritmos y métricas no son equivalentes; esta distinción se desarrolla en los documentos de `01_PROYECTO_ACTUAL/`.
 

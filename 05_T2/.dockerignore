@@ -1,0 +1,8 @@
+**/__pycache__/
+*.py[cod]
+.env
+.cache/
+research_reformulación/
+Metadata/salida/
+Amenazas/salida/
+BD/salida/

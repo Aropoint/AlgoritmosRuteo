@@ -1,0 +1,57 @@
+# Tarea 2: base de datos (PostgreSQL + PostGIS + pgRouting), tareas ETL y sitio web.
+# Lo usa main.py (raíz). A mano:
+#   docker compose up -d --wait db                     # base de datos
+#   docker compose run --rm app python pipeline.py     # ETL, cargas, pesos, rutas y diagrama
+#   docker compose up -d web                           # sitio en http://localhost:8000
+name: ruteo-uav
+
+x-app: &app
+  build: ./05_T2
+  image: ruteo-uav-app
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    PGHOST: db
+    PGPORT: "5432"
+    PGDATABASE: ${POSTGRES_DB:-ruteo_uav}
+    PGUSER: ${POSTGRES_USER:-postgres}
+    PGPASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+  volumes:
+    - ./05_T2:/app
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: pgrouting/pgrouting:17-3.5-3.8.0
+    container_name: ruteo_uav_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ruteo_uav}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Tareas por lotes (pipeline.py, pruebas). No queda corriendo: se usa con `docker compose run`.
+  app:
+    <<: *app
+    profiles: ["tareas"]
+
+  web:
+    <<: *app
+    container_name: ruteo_uav_web
+    command: ["uvicorn", "SitioWeb.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+
+volumes:
+  db_data:

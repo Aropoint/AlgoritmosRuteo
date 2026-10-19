@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ruteo resiliente de UAV</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/estilo.css">
+</head>
+<body>
+  <aside id="panel">
+    <header>
+      <h1>Ruteo resiliente de UAV</h1>
+      <p class="sub">Dijkstra por km (<code>pgr_dijkstra</code>) frente a Yen + selección resiliente (<code>pgr_KSP</code>) sobre una malla sintética en Mykolaiv.</p>
+    </header>
+
+    <section>
+      <h2>1. Origen y destino</h2>
+      <p class="ayuda">Haz clic en el mapa: el primer clic fija el origen y el segundo el destino. Se usa el nodo más cercano.</p>
+      <div class="puntos">
+        <div><span class="marca origen"></span>Origen: <strong id="txt-origen">sin definir</strong></div>
+        <div><span class="marca destino"></span>Destino: <strong id="txt-destino">sin definir</strong></div>
+      </div>
+      <div class="botones">
+        <button type="button" id="btn-mision" class="secundario">Usar la misión</button>
+        <button type="button" id="btn-limpiar" class="secundario">Limpiar</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Preferencias</h2>
+      <p class="ayuda">Si no cambias nada se usan las preferencias por defecto (rúbrica 6.2).</p>
+      <form id="form-prefs">
+        <label>Altura de vuelo sobre el despegue (m)<input type="number" name="altura_vuelo_m" step="1" min="1"></label>
+        <label>Margen vertical sobre obstáculos (m)<input type="number" name="margen_vertical_m" step="1" min="0"></label>
+        <label>Viento máximo admisible (m/s)<input type="number" name="viento_max_m_s" step="0.5" min="0.5"></label>
+        <label>Velocidad de crucero (m/s)<input type="number" name="velocidad_crucero_m_s" step="0.5" min="1.5"></label>
+        <label>Desvío máximo α (fracción sobre la más corta)<input type="number" name="desvio_max" step="0.05" min="0"></label>
+        <label>Presupuesto extra β (fracción de km)<input type="number" name="presupuesto_extra" step="0.05" min="0"></label>
+        <label>Aversión al riesgo w<sub>R</sub><input type="number" name="peso_riesgo" step="0.1" min="0"></label>
+        <label class="check"><input type="checkbox" name="respetar_zonas_restringidas"> Respetar zonas restringidas</label>
+        <details>
+          <summary>Escenarios de fallas</summary>
+          <label>Fallas por escenario<input type="number" name="n_fallas" value="3" min="1" max="10"></label>
+          <label>Escenarios simulados<input type="number" name="n_escenarios" value="100" min="10" max="100" step="10"></label>
+        </details>
+        <div class="botones">
+          <button type="submit" id="btn-calcular">Calcular rutas</button>
+          <button type="button" id="btn-defecto" class="secundario">Restaurar valores</button>
+        </div>
+      </form>
+      <p id="txt-viento" class="ayuda"></p>
+    </section>
+
+    <section id="resultado">
+      <h2>3. Resultado</h2>
+      <p class="ayuda" id="txt-estado">Cargando…</p>
+      <div id="contenido-resultado"></div>
+    </section>
+
+    <footer class="ayuda">
+      Simulación académica (UDP, Algoritmos de Ruteo). Malla y fallas sintéticas; metadata y amenazas de fuentes públicas
+      (OSM, Open-Meteo, GPSJam, The Economist/FIRMS, UCDP). No es un plan de vuelo.
+    </footer>
+  </aside>
+  <main id="mapa"></main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

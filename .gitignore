@@ -37,3 +37,9 @@
 # Respaldo antiguo y grabación local; la transcripción sí se comparte
 /04_VALIDACION_TAREA_1/validacion_ruteo_uav.zip
 /02_REUNION_PROFESOR/Charla_profesor.mp4
+
+# Tarea 2: descargas crudas y JSON regenerables por main.py (pueden pesar decenas de MB)
+/05_T2/.cache/
+/05_T2/Metadata/salida/
+/05_T2/Amenazas/salida/
+/05_T2/BD/salida/
