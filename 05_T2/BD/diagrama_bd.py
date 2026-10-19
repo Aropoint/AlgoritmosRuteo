@@ -38,23 +38,13 @@ COLUMNAS = [
     ["Metadata"],
 ]
 
-# Color por tabla referenciada. Casi todas las FK apuntan a `fuentes` o a `nodos`: pintar cada haz
-# de un color deja seguir a dónde va una línea sin recorrerla con el dedo.
-COLOR_RELACION = {
-    "fuentes": "#0f766e",  # verde azulado: procedencia (quién cargó el dato)
-    "nodos": "#1d4ed8",    # azul: grafo de navegación
-}
-COLOR_OTRAS = "#6b7280"
-
-# Título con leyenda del código de color. Va en el propio diagrama para que la lámina se entienda
-# sola, sin que haya que explicar los colores de viva voz.
+# Título con una línea de leyenda, para que la lámina se entienda sin explicarla de viva voz.
 LEYENDA = (
     '<<FONT POINT-SIZE="18"><B>Modelo de datos: ruteo resiliente de UAV</B></FONT><BR/><BR/>'
-    '<FONT POINT-SIZE="11" COLOR="#374151">El pie de gallo marca el lado «muchos». '
-    '<FONT COLOR="#1d4ed8"><B>Azul: apunta a nodos</B></FONT> &#183; '
-    '<FONT COLOR="#0f766e"><B>Verde: apunta a fuentes</B></FONT> &#183; '
-    '<FONT COLOR="#9ca3af"><B>Punteada: relación lógica, sin clave foránea</B></FONT><BR/>'
-    'La etiqueta de cada línea es la columna que hace de clave foránea.</FONT>>'
+    '<FONT POINT-SIZE="11" COLOR="#374151">Cada línea une la clave foránea con la columna a la que '
+    'apunta; el pie de gallo marca el lado «muchos».<BR/>'
+    '<FONT COLOR="#9ca3af"><B>La punteada es una relación lógica, sin clave foránea.</B></FONT>'
+    '</FONT>>'
 )
 
 # parametros_pesos no tiene clave foránea: es la tabla de constantes que lee BD/pesos.sql
@@ -116,9 +106,10 @@ def _nodo_tabla(sub, tabla: str, columnas, pk, con_fk) -> None:
 
 
 def dibujar(columnas, pk, fk) -> graphviz.Digraph:
-    # splines=ortho: tramos rectos con quiebres en ángulo recto, más fáciles de seguir que las curvas.
-    # newrank=true es imprescindible para que rank=same funcione entre clusters distintos.
-    dot = graphviz.Digraph("bd", graph_attr={"rankdir": "LR", "newrank": "true", "splines": "ortho",
+    # Curvas (splines por defecto): esquivan las cajas y se pueden anclar a la fila exacta de cada
+    # columna, cosa que splines=ortho no hace. newrank=true es imprescindible para que rank=same
+    # funcione entre clusters distintos.
+    dot = graphviz.Digraph("bd", graph_attr={"rankdir": "LR", "newrank": "true",
                                              "fontname": "Helvetica", "nodesep": "0.5", "ranksep": "1.6",
                                              "label": LEYENDA, "labelloc": "t", "fontsize": "18"},
                            node_attr={"shape": "plaintext", "fontname": "Helvetica", "fontsize": "10"},
@@ -156,25 +147,16 @@ def dibujar(columnas, pk, fk) -> graphviz.Digraph:
     for origen, destino in zip(representantes, representantes[1:]):
         dot.edge(origen, destino, style="invis")
 
+    # Una línea por clave foránea, anclada a la fila exacta en ambos extremos (PORT): se lee de qué
+    # columna sale y a cuál llega sin necesidad de etiquetas.
     # constraint=false: las FK ya no deciden la posición, solo se dibujan sobre la rejilla.
-    # Se unen tabla con tabla y no fila con fila: anclar a un PORT hace que splines=ortho deje de
-    # esquivar las cajas y las líneas terminen cruzando por encima de otras tablas. A cambio, la
-    # columna que es clave foránea se recupera con la etiqueta de la arista.
-    # Varias FK entre el mismo par de tablas (aristas.source y .target -> nodos) van en UNA línea
-    # etiquetada con ambas: dibujar dos flechas idénticas superpuestas no aporta nada.
-    agrupadas: dict[tuple[str, str], list[str]] = {}
-    for tabla, columna, ref, _ in fk:
-        agrupadas.setdefault((ref, tabla), []).append(columna)
-    for (ref, tabla), cols in sorted(agrupadas.items()):
-        color = COLOR_RELACION.get(ref, COLOR_OTRAS)
-        dot.edge(ref, tabla, constraint="false", color=color, penwidth="1.4",
-                 xlabel=", ".join(sorted(cols)), fontsize="9", fontcolor=color)
+    for tabla, columna, ref, columna_ref in fk:
+        dot.edge(f"{ref}:{columna_ref}", f"{tabla}:{columna}", constraint="false")
     for origen, destino, etiqueta in RELACIONES_LOGICAS:
         if origen in columnas and destino in columnas:
-            # xlabel y no label: splines=ortho no sabe dibujar etiquetas sobre la arista.
             dot.edge(origen, destino, constraint="false", style="dashed", color="#9ca3af",
                      arrowhead="vee", arrowtail="none", dir="forward",
-                     xlabel=etiqueta, fontsize="9", fontcolor="#6b7280")
+                     label=etiqueta, fontsize="9", fontcolor="#6b7280")
     return dot
 
 
