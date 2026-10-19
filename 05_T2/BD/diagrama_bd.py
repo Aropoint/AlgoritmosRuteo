@@ -41,8 +41,8 @@ COLUMNAS = [
 # Título con una línea de leyenda, para que la lámina se entienda sin explicarla de viva voz.
 LEYENDA = (
     '<<FONT POINT-SIZE="18"><B>Modelo de datos: ruteo resiliente de UAV</B></FONT><BR/><BR/>'
-    '<FONT POINT-SIZE="11" COLOR="#374151">Cada línea une la clave foránea con la columna a la que '
-    'apunta; el pie de gallo marca el lado «muchos».<BR/>'
+    '<FONT POINT-SIZE="11" COLOR="#374151">Cada flecha sale de la columna referenciada y apunta a '
+    'la columna que es clave foránea.<BR/>'
     '<FONT COLOR="#9ca3af"><B>La punteada es una relación lógica, sin clave foránea.</B></FONT>'
     '</FONT>>'
 )
@@ -113,7 +113,11 @@ def dibujar(columnas, pk, fk) -> graphviz.Digraph:
                                              "fontname": "Helvetica", "nodesep": "0.5", "ranksep": "1.6",
                                              "label": LEYENDA, "labelloc": "t", "fontsize": "18"},
                            node_attr={"shape": "plaintext", "fontname": "Helvetica", "fontsize": "10"},
-                           edge_attr={"color": "#555555", "arrowhead": "crow", "arrowtail": "tee", "dir": "both"})
+                           # Punta simple en vez de pie de gallo + marca de «uno»: esos dos símbolos
+                           # se dibujan justo donde la línea toca la caja y emborronan la fila a la
+                           # que está anclada, que es lo que de verdad interesa leer.
+                           edge_attr={"color": "#555555", "arrowhead": "vee", "arrowsize": "0.8",
+                                      "dir": "forward"})
     con_fk = {(t, c) for t, c, _, _ in fk}
     por_titulo: dict[str, list[str]] = {}
     for tabla in columnas:
