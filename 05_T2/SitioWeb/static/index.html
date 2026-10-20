@@ -58,6 +58,42 @@
       <div id="contenido-resultado"></div>
     </section>
 
+    <section id="flota">
+      <h2>4. Flota con aviso en tiempo real</h2>
+      <p class="ayuda">Varios UAV hacen la misma misión, uno tras otro. Cuando uno detecta interferencia avisa al resto
+        (el aviso se retransmite de UAV en UAV, como en CLUN-LSR) y los demás cambian de ruta en pleno vuelo. Si un UAV
+        queda dentro de una zona deja de emitir su beacon, y la flota marca esa zona para evitarla.</p>
+      <form id="form-flota">
+        <label>UAV en la flota<input type="number" name="n_uav" value="4" min="3" max="5"></label>
+        <label>Separación entre despegues (km)<input type="number" name="separacion_km" value="1" min="0.1" max="5" step="0.1"></label>
+        <label>Prob. de notar la zona antes de entrar<input type="number" name="prob_deteccion" value="0.5" min="0" max="1" step="0.1"></label>
+        <label>Alcance de radio entre UAV (km)<input type="number" name="alcance_com_km" value="3" min="0.1" max="20" step="0.5"></label>
+        <label>Zonas de interferencia por escenario<input type="number" name="n_fallas" value="3" min="1" max="10"></label>
+        <label>Escenarios para las métricas<input type="number" name="n_escenarios" value="30" min="5" max="100" step="5"></label>
+        <p class="ayuda">Usa el origen y el destino marcados; si no hay, la misión completa (inicio, 3 puntos de
+          observación y destino). Las preferencias son las de la sección 2.</p>
+        <div class="botones"><button type="submit" id="btn-flota">Simular flota</button></div>
+      </form>
+      <p class="ayuda" id="txt-flota"></p>
+      <div id="reproductor" hidden>
+        <div class="botones">
+          <select id="sel-modo" aria-label="Estrategia animada">
+            <option value="con_aviso">Con aviso compartido</option>
+            <option value="sin_aviso">Sin aviso (cada UAV solo)</option>
+          </select>
+          <button type="button" id="btn-play">▶ Reproducir</button>
+          <select id="sel-vel" aria-label="Velocidad">
+            <option value="10">×10</option><option value="30" selected>×30</option><option value="60">×60</option>
+          </select>
+        </div>
+        <input type="range" id="rng-t" min="0" max="1000" value="0" aria-label="Tiempo de la simulación">
+        <div class="reloj">t = <strong id="txt-t">0</strong> s de <span id="txt-fin">0</span> s</div>
+        <div id="estado-uav"></div>
+        <ol id="bitacora"></ol>
+      </div>
+      <div id="contenido-flota"></div>
+    </section>
+
     <footer class="ayuda">
       Simulación académica (UDP, Algoritmos de Ruteo). Malla y fallas sintéticas; metadata y amenazas de fuentes públicas
       (OSM, Open-Meteo, GPSJam, The Economist/FIRMS, UCDP). No es un plan de vuelo.

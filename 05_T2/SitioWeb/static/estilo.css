@@ -79,3 +79,20 @@ th { color: var(--tenue); font-weight: 600; }
   #panel { width: 100%; height: 55%; border-right: 0; border-bottom: 1px solid var(--borde); }
   #mapa { height: 45%; }
 }
+
+/* Flota con aviso en tiempo real */
+select { padding: 5px 6px; border: 1px solid var(--borde); border-radius: 5px; font: inherit; background: #fff; }
+#reproductor input[type=range] { width: 100%; margin: 8px 0 2px; }
+.reloj { font-size: 12.5px; color: var(--tenue); }
+#estado-uav { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; margin: 6px 0; font-size: 12.5px; }
+.punto-uav { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+#bitacora { max-height: 190px; overflow-y: auto; margin: 6px 0; padding-left: 20px; font-size: 12px; }
+#bitacora li { margin: 2px 0; }
+#bitacora li.clave { font-weight: 600; }
+#bitacora li.mala { color: #b91c1c; }
+#bitacora .t { color: var(--tenue); font-variant-numeric: tabular-nums; }
+.etiqueta-uav { background: transparent; border: 0; box-shadow: none; color: #fff; font-weight: 700; font-size: 11px; }
+.etiqueta-uav::before { display: none; }
+.difs { padding-left: 18px; font-size: 12.5px; }
+.difs .pos { color: #15803d; }
+.difs .neg { color: #b91c1c; }

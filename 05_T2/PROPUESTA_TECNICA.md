@@ -1,6 +1,6 @@
 # Propuesta técnica: ruteo físico resiliente de UAV (Tarea 2)
 
-**Versión:** v2 (18-oct-2026) · **Estado:** núcleo algorítmico implementado y probado en Python; resultados **preliminares** solo sobre el conjunto de **ajuste**. El conjunto de evaluación no se ha ejecutado a propósito (ver §8).
+**Versión:** v3 (20-oct-2026) · **Estado:** núcleo algorítmico implementado y probado en Python; resultados **preliminares** solo sobre el conjunto de **ajuste**. El conjunto de evaluación no se ha ejecutado a propósito (ver §8). La v3 agrega la **flota de 3 a 5 UAV con aviso compartido y cambio de ruta en tiempo real** (§10).
 
 Este documento formaliza lo que [CONTEXTO_PROPUESTA_RUTEO_RESILIENTE_UAV_TAREA2.md](CONTEXTO_PROPUESTA_RUTEO_RESILIENTE_UAV_TAREA2.md) dejó como "por formalizar": el grafo, el modelo de fallas, los pesos, las restricciones, la regla de selección, la replanificación, las métricas y el protocolo experimental. Cada sección indica el criterio de la rúbrica al que responde y el archivo donde está implementada.
 
@@ -21,6 +21,8 @@ Este documento formaliza lo que [CONTEXTO_PROPUESTA_RUTEO_RESILIENTE_UAV_TAREA2.
 **Éxito de misión.** Todos los puntos visitados en orden, destino alcanzado y `km recorridos ≤ km_max`.
 
 **Pregunta.** ¿Seleccionar rutas resilientes antes de salir y replanificar ante fallas completa más misiones que Dijkstra por distancia, sin exceder el presupuesto?
+
+**Pregunta de la flota (§10).** Si varios UAV hacen la misma misión y el que detecta interferencia avisa al resto, ¿cuántas misiones más completan los que vienen detrás al cambiar de ruta en vuelo?
 
 ## 2. Modelo de fallas (rúbrica 5.1) · `ruteo/fallas.py`
 
@@ -190,21 +192,84 @@ Generados con `python experimentos/run_experimentos.py --conjunto ajuste --sensi
   - **Escenarios donde la ventaja de C sea plausible:** detección tardía (el UAV solo se entera al entrar en el tramo), costo de replanificar (latencia o límite de replanificaciones) o fallas comunicadas por un UAV predecesor, que era la idea del profesor y deja al planificador información parcial antes de llegar.
   - **Redefinir el aporte como "selección consciente del presupuesto"** y medir la métrica `R_par`, donde C sí gana de forma consistente.
 
-## 10. Limitaciones
+## 10. Flota con aviso compartido y cambio de ruta en tiempo real · `ruteo/flota.py`, `experimentos/run_flota.py`
+
+Recupera la idea de la reunión con el profesor: un dron que entra a una zona de interferencia sirve de alerta para que los siguientes cambien su trayectoria. El mecanismo de aviso se toma de **CLUN-LSR**: el UAV que detecta la interferencia lo comunica y el aviso se retransmite por la red de UAV. No se implementa el protocolo completo (capas, espectro, MP-OLSR), solo su efecto sobre el ruteo físico: **que el aviso llegue y los demás replanifiquen**.
+
+### Modelo
+
+- **Flota.** N ∈ {3, 4, 5} UAV (por defecto 4) hacen la misma misión `A → P1 → P2 → P3 → B`. Despegan de A cada `separacion_km = 1` km (≈ 83 s a 12 m/s) y comparten un reloj medido en km a velocidad de crucero. Cada UAV tiene su propio presupuesto `(1 + β) · L*`.
+- **Zonas de interferencia.** Son las fallas de §2, y `t_on` se mide con el reloj de la misión. Para el primer UAV nada cambia: **con N = 1, el simulador de flota reproduce exactamente a `ejecutar_mision`**, lo que se comprueba en `tests/test_flota.py`.
+- **Detección en el borde.** Al llegar a un nodo, el UAV nota con probabilidad `p_det` (`prob_deteccion`) los tramos que cruzan una zona activa. Si no la nota y su plan usa ese tramo, entra a la zona y pierde el enlace.
+- **Aviso por detección (CLUN-LSR).** Si el UAV conserva el enlace, es decir, si no está rodeado por la zona, difunde **de inmediato** los tramos afectados.
+  - El aviso se retransmite de UAV en UAV, y también por la estación en A, entre los que están a ≤ `alcance_com_km = 3` km.
+  - Un UAV fuera de alcance lo recibe cuando vuelve a estar conectado (almacenar y reenviar).
+- **Aviso por silencio (*keep-alive*).** Cada UAV emite un beacon cada 2 s. Si queda dentro de una zona, deja de emitirlo. Tras 3 beacons perdidos (6 s), la flota marca como zona a evitar los tramos a ≤ ρ de su última posición. Si no hay ruta sin ellos, se ignoran.
+- **Reacción en tiempo real.** Quien recibe un aviso incorpora los tramos: D_A los excluye y C_A, además, penaliza su entorno (π, §4).
+  - Si su ruta restante cruza lo avisado, **replanifica en ese instante** desde el nodo hacia el que vuela, sin esperar a toparse con el bloqueo.
+  - Un UAV que todavía no despega planifica con el aviso.
+  - No se gira en medio de un tramo: el cambio rige desde el nodo siguiente.
+
+### Estrategias de la flota
+
+| Clave | Estrategia | Qué aísla |
+|---|---|---|
+| A | Par Dijkstra fijo, sin aviso | Línea base |
+| D | Dijkstra que replanifica, sin aviso: cada UAV aprende solo lo que ve | Referencia del aviso |
+| C | Propuesta, sin aviso | — |
+| **D_A** | D con aviso compartido | **Valor del aviso:** `ΔR(D_A − D)` |
+| **C_A** | C con aviso compartido | **Aporte de la selección por encima del aviso:** `ΔR(C_A − D_A)` |
+
+**Métricas:**
+- **`R_seguidores` (principal):** misiones completadas por los UAV 2 a N, que son los que pueden aprovechar un aviso.
+- **`R_uav`:** misiones completadas por todos los UAV.
+- **`R_flota`:** escenarios en que al menos un UAV completa la misión.
+- UAV perdidos por escenario.
+- Cambios de ruta por aviso.
+- **Demora del aviso:** desde la detección, o la pérdida del UAV, hasta que cada uno de los demás se entera.
+
+McNemar se calcula sobre pares (escenario, UAV). Los UAV de un mismo escenario no son independientes, así que ese p-valor es orientativo.
+
+### Resultados preliminares (conjunto de ajuste, 100 escenarios, `prob_foco = 0,5`, β = 0,6)
+
+Generados con `python experimentos/run_flota.py --conjunto ajuste` (primera fila) y `--sensibilidad --n-fallas 5` (resto). Están en `resultados/flota_*.json`. Formato de los ΔR: pp sobre los seguidores, seguidos de (escenario-UAV en que solo gana el método / solo gana la referencia, p).
+
+| Fallas | p_det | UAV | R_seg D | R_seg D_A | R_seg C_A | ΔR D_A − D | ΔR C_A − D_A | ΔR C_A − D | Perdidos D → C_A |
+|---|---|---|---|---|---|---|---|---|---|
+| 3 | 0,5 | 4 | 0,770 | 0,870 | **0,930** | **+10,0** (30/0, p < 10⁻⁴) | +6,0 (29/11, p = 0,006) | +16,0 (58/10) | 0,87 → 0,35 |
+| 5 | 1 | 3 | 0,930 | 0,935 | 0,960 | +0,5 (1/0, p = 1) | +2,5 (11/6, p = 0,33) | +3,0 (12/6) | 0,18 → 0,11 |
+| 5 | 1 | 4 | 0,947 | 0,950 | 0,967 | +0,3 (1/0, p = 1) | +1,7 (13/8, p = 0,38) | +2,0 (14/8) | 0,20 → 0,13 |
+| 5 | 1 | 5 | 0,955 | 0,958 | 0,965 | +0,2 (1/0, p = 1) | +0,8 (15/12, p = 0,70) | +1,0 (16/12) | 0,22 → 0,17 |
+| 5 | 0,5 | 3 | 0,690 | 0,805 | 0,835 | **+11,5** (23/0, p < 10⁻⁴) | +3,0 (22/16, p = 0,42) | +14,5 (42/13) | 0,86 → 0,52 |
+| 5 | 0,5 | 4 | 0,667 | 0,807 | 0,857 | **+14,0** (42/0, p < 10⁻⁴) | +5,0 (35/20, p = 0,058) | +19,0 (73/16) | 1,24 → 0,63 |
+| 5 | 0,5 | 5 | 0,637 | 0,807 | **0,873** | **+17,0** (68/0, p < 10⁻⁴) | +6,5 (50/24, p = 0,003) | +23,5 (114/20) | 1,69 → 0,71 |
+| 5 | 0 | 3 | 0,605 | 0,740 | 0,730 | **+13,5** (27/0, p < 10⁻⁴) | −1,0 (23/25, p = 0,89) | +12,5 (40/15) | 1,10 → 0,87 |
+| 5 | 0 | 4 | 0,573 | 0,720 | 0,740 | **+14,7** (44/0, p < 10⁻⁴) | +2,0 (39/33, p = 0,56) | +16,7 (69/19) | 1,59 → 1,11 |
+| 5 | 0 | 5 | 0,542 | 0,705 | 0,740 | **+16,2** (65/0, p < 10⁻⁴) | +3,5 (55/41, p = 0,18) | +19,8 (102/23) | 2,14 → 1,37 |
+
+Demora media del aviso:
+- Por detección: entre 0 y 1,8 s según la celda. Casi todas las recepciones son en el mismo instante; los retrasos corresponden a UAV fuera de alcance que lo recibieron al reconectarse.
+- Por silencio: 6 s, que es el tiempo de declarar 3 beacons perdidos (6,7 s en una celda, por el mismo motivo).
+
+### Lectura honesta
+
+1. **El aviso nunca empeora a un seguidor.** En todas las celdas, ningún UAV completa la misión sin aviso y la pierde con aviso. Cuando la interferencia no siempre se nota antes de entrar (`p_det ≤ 0,5`), el aviso sube `R_seguidores` entre **+10 y +17 pp**, y la mejora crece con el tamaño de la flota: hay más UAV detrás que aprovechan el mismo aviso.
+2. **Con detección perfecta en el borde (`p_det = 1`), el aviso casi no cambia la tasa** (+0,2 a +0,5 pp). Cada UAV esquiva la zona por su cuenta y el aviso solo ahorra km. Su valor depende de que la interferencia no sea evidente antes de entrar, que es justo el caso que describió el profesor: un dron entra, pierde el enlace y los demás tienen que enterarse.
+3. **Por encima del aviso, la selección resiliente** (`C_A − D_A`) suma entre +5 y +6,5 pp con `p_det = 0,5`. Es significativa con 3 fallas y con 5 UAV, y no lo es con `p_det = 0` ni con `p_det = 1`. Es el primer escenario en que el aporte propio supera a la replanificación simple, pero sigue siendo un resultado del conjunto de ajuste.
+4. **El UAV que se pierde no se salva.** El beneficio es para los que vienen detrás. Por eso la métrica principal es la de los seguidores y no la de la flota completa.
+5. **`p_det`, la separación entre despegues y el alcance de radio son supuestos.** No hay datos públicos sobre con cuánta anticipación un UAV nota la interferencia. Por eso se informa el barrido completo y no una sola cifra.
+
+## 11. Limitaciones
 
 - Grafo, focos, eventos y fallas son **sintéticos**; con datos reales cambia la distribución espacial y los resultados pueden cambiar.
 - Modelo 2,5D: sin altura de vuelo variable, sin energía ni tiempo, y el viento es uniforme en el AOI.
-- Un solo UAV, sin comunicación, conocimiento solo local y fallas permanentes (las transitorias están modeladas pero no se evaluaron).
+- Simulador de un UAV: conocimiento solo local y fallas permanentes (las transitorias están modeladas pero no se evaluaron).
+- Flota (§10): radio ideal (alcance como disco, sin pérdida de paquetes ni latencia de red), detección con probabilidad fija, todos los UAV con la misma misión y velocidad, sin giro en medio de un tramo. CLUN-LSR se representa por su efecto (el aviso llega por multisalto), no se simula el protocolo.
 - Una sola misión (mismos A, P1–P3, B) y una sola malla (semilla 7): falta variar la misión y la malla para generalizar.
 
-## 11. Próximos pasos (ordenados por dependencia)
+## 12. Próximos pasos (ordenados por dependencia)
 
-1. **Grupo:** acordar si se itera sobre C (§9) o se congela la v2; luego correr `--conjunto evaluacion` **una sola vez**.
-2. **Implementado, sin ejecutar todavía:**
-   - Docker con PostGIS y pgRouting, `BD/schema.sql`, el diagrama y los cargadores.
-   - ETL de 3 metadata (OSM, elevación de Open-Meteo y viento ERA5) y 3 amenazas (GPSJam, incendios de guerra y UCDP), cada uno con su documento de estructura.
-   - Pesos en SQL, rutas con `pgr_dijkstra` / `pgr_KSP`, sitio Leaflet y `main.py`.
-
-   Falta la primera ejecución completa (`python main.py`) y corregir lo que falle (ver `ENTREGA_TAREA2.md`).
+1. **Grupo:** acordar si se congelan la v2 (un UAV) y la flota con sus valores por defecto (4 UAV, `p_det = 0,5`, 3 fallas). Después, correr **una sola vez** `run_experimentos.py --conjunto evaluacion` y `run_flota.py --conjunto evaluacion`.
+2. Regenerar `BD/rutas_ejemplo.py` tras el arreglo de los focos (ver README) y probar en Docker la sección "Flota con aviso" del sitio (`POST /api/flota`). Fuera de Docker solo se probó con datos sintéticos.
 3. Comparar las rutas de pgRouting con las de Python (`ruteo/algoritmos.py`) sobre el mismo grafo. Pueden diferir solo en empates.
-4. Opcional, para fortalecer el aporte frente a D: el aviso compartido entre UAV (estrategias D_A y C_A, ver `research_reformulación/`).
+4. Generalización: repetir la comparación de la flota en otras mallas y misiones (otras semillas de `ParametrosMalla`).

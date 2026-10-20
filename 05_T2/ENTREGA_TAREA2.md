@@ -43,9 +43,17 @@ La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guí
 | 7.2 | Explicar el algoritmo | 6 | PROPUESTA_TECNICA §4, `ruteo/algoritmos.py`, `comun/rutas.py` | Pseudocódigo PLANIFICAR / AL_DESCUBRIR / REACCIONAR y J(p, q) |
 | 8 | k ≥ 2 rutas solo con `pgr_dijkstra` por km | 4 | `comun/rutas.py` (`dijkstra_dos_rutas_pgr`), `BD/rutas_ejemplo.py` | Mapa con las 2 rutas azules del ejemplo y la consulta SQL |
 | 9 | k ≥ 2 rutas con el algoritmo propuesto | 4 | `comun/rutas.py` (`ksp_pgr`, `propuesta_pgr`) | Mapa con las 2 rutas naranjas |
-| 10 | Métrica de resiliencia de k rutas | 6 | `comun/resiliencia.py`, `ruteo/metricas.py` | `R_par` (alguna ruta del par queda libre) y `R_mision` (llega dentro del presupuesto) sobre N escenarios |
-| 11.1 | Plataforma: (inicio, objetivo) + restricciones → mapa con el par | 4 | `SitioWeb/app.py`, `SitioWeb/static/` | Demostración: clic en origen y destino, cambio de una preferencia, "Calcular rutas" |
-| 11.2 | Diferencial de resiliencia | 2 | Panel de resultados del sitio, tabla `evaluaciones` | ΔR = R(C) − R(A) en pp, con el p de McNemar. Mostrar también C − D (ablación) |
+| 10 | Métrica de resiliencia de k rutas | 6 | `comun/resiliencia.py`, `ruteo/metricas.py` | `R_par` (alguna ruta del par queda libre) y `R_mision` (llega dentro del presupuesto) sobre N escenarios. Para la flota, `R_seguidores` (PROPUESTA_TECNICA §10) |
+| 11.1 | Plataforma: (inicio, objetivo) + restricciones → mapa con el par | 4 | `SitioWeb/app.py`, `SitioWeb/static/` | Demostración: clic en origen y destino, cambio de una preferencia, "Calcular rutas". Después, la sección 4 "Flota con aviso": reproducir el escenario y cambiar entre con aviso y sin aviso |
+| 11.2 | Diferencial de resiliencia | 2 | Panel de resultados del sitio, tabla `evaluaciones`, panel de la flota | ΔR = R(C) − R(A) en pp, con el p de McNemar. Mostrar también C − D (ablación) y, en la flota, D_A − D (valor del aviso) y C_A − D_A |
+
+## Flota con aviso compartido (idea del profesor y base en CLUN-LSR)
+
+No es un criterio aparte de la rúbrica, pero responde la observación de la reunión: con un solo dron, avisar al resto "es un problema que no existe".
+
+- **Qué es:** de 3 a 5 UAV hacen la misma misión. El que detecta interferencia avisa a la flota, el aviso se retransmite de UAV en UAV, y los demás cambian de ruta en pleno vuelo. Si un UAV queda dentro de una zona, deja de emitir su beacon y la flota marca esa zona. Ver `ruteo/flota.py` y PROPUESTA_TECNICA §10.
+- **Qué mostrar:** la animación del sitio, en el mismo escenario con aviso y sin aviso. Después, la tabla de PROPUESTA_TECNICA §10. Con `p_det ≤ 0,5`, D_A − D da entre +10 y +17 pp en los seguidores, sin ningún caso perdido. Con `p_det = 1`, el aviso casi no cambia la tasa, y hay que decirlo.
+- **Cómo reproducir:** `python experimentos/run_flota.py --conjunto ajuste` y `python experimentos/run_flota.py --conjunto ajuste --sensibilidad --n-fallas 5`.
 
 ## Puntos del enunciado que no son criterios
 
@@ -72,3 +80,4 @@ La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guí
 - GPSJam mide **aviones en altura**. Sobre zonas de guerra sin tráfico civil suele no haber datos, y eso es ausencia de dato, no de interferencia.
 - El modelo de jamming del simulador es **abstracto**: discos con radio, momento de activación y focos. No se modelan sistemas reales.
 - **La comparación honesta incluye la ablación D.** Con los datos de ajuste, C supera a A, pero no a D (PROPUESTA_TECNICA §9).
+- **El aviso de la flota sirve cuando la interferencia no se nota antes de entrar.** Con detección perfecta en el borde, cada UAV esquiva solo y el aviso únicamente ahorra km (PROPUESTA_TECNICA §10). La probabilidad de detección es un supuesto, por eso se muestra el barrido.

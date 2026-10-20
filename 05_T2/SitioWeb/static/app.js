@@ -320,3 +320,243 @@ $('form-prefs').addEventListener('submit', async (ev) => {
     mostrarEstado(`Sin rutas de ejemplo todavía (${e.message}). Elige origen y destino para calcular.`);
   }
 }());
+
+// ---------------------------------------------------------------------------
+// Flota con aviso compartido: animación del cambio de ruta en tiempo real
+// ---------------------------------------------------------------------------
+const COLOR_UAV = ['#0f766e', '#2563eb', '#ea580c', '#9333ea', '#db2777'];
+const capaFlota = L.layerGroup().addTo(mapa);
+control.addOverlay(capaFlota, 'Flota con aviso (animación)');
+const anim = { datos: null, modo: 'con_aviso', t: 0, fin: 0, jugando: false, ultimo: null, capas: null, bitacora: [] };
+const FINALES = ['completada', 'perdido_en_interferencia', 'atrapado', 'sin_alternativa', 'presupuesto', 'sin_ruta', 'bucle'];
+
+const TEXTO_EVENTO = {
+  despegue: [(i) => `UAV ${i} despega`, ''],
+  deteccion: [(i) => `UAV ${i} detecta interferencia en el borde de una zona`, 'clave'],
+  aviso_enviado: [(i) => `UAV ${i} avisa a la flota`, 'clave'],
+  aviso_recibido: [(i, e) => `UAV ${i} recibe el aviso ${e.clase === 'silencio' ? 'por silencio' : 'de detección'} (de UAV ${e.de + 1})`, ''],
+  replan_aviso: [(i) => `UAV ${i} cambia de ruta en pleno vuelo por el aviso`, 'clave'],
+  replan: [(i) => `UAV ${i} se topa con el bloqueo y replanifica`, ''],
+  perdido_en_interferencia: [(i) => `UAV ${i} entra a una zona sin notarla y pierde el enlace`, 'mala'],
+  atrapado: [(i) => `UAV ${i} queda dentro de una zona y pierde el enlace`, 'mala'],
+  completada: [(i) => `UAV ${i} completa la misión`, 'clave'],
+  sin_alternativa: [(i) => `UAV ${i} aborta: no queda ruta`, 'mala'],
+  presupuesto: [(i) => `UAV ${i} aborta: excede el presupuesto de km`, 'mala'],
+  sin_ruta: [(i) => `UAV ${i} no encuentra ruta`, 'mala'],
+  bucle: [(i) => `UAV ${i} aborta: demasiados pasos`, 'mala'],
+};
+
+function posicionEn(tray, t) {
+  if (!tray.length) return null;
+  if (t <= tray[0].t_s) return tray[0].pos;
+  for (let i = 1; i < tray.length; i += 1) {
+    const a = tray[i - 1];
+    const b = tray[i];
+    if (t <= b.t_s) {
+      const f = b.t_s > a.t_s ? (t - a.t_s) / (b.t_s - a.t_s) : 1;
+      return [a.pos[0] + f * (b.pos[0] - a.pos[0]), a.pos[1] + f * (b.pos[1] - a.pos[1])];
+    }
+  }
+  return tray[tray.length - 1].pos;
+}
+
+function ultimoEvento(eventos, t, tipos) {
+  let elegido = null;
+  for (const e of eventos) {
+    if (e.t_s > t) break;
+    if (tipos.includes(e.tipo)) elegido = e;
+  }
+  return elegido;
+}
+
+function armarCapas() {
+  capaFlota.clearLayers();
+  const lt = anim.datos.animacion[anim.modo];
+  const zonas = lt.fallas.map((f) => L.circle([f.lat, f.lon], { radius: f.radio_km * 1000, weight: 1 })
+    .bindTooltip(`Zona de interferencia ${f.id + 1}: activa desde t = ${num(f.inicio_s, 0)} s`).addTo(capaFlota));
+  const uavs = lt.uavs.map((u, i) => {
+    const color = COLOR_UAV[i % COLOR_UAV.length];
+    return {
+      plan: L.polyline([], { color, weight: 2, opacity: 0.7, dashArray: '6 6' }).addTo(capaFlota),
+      hecho: L.polyline([], { color, weight: 4, opacity: 0.9 }).addTo(capaFlota),
+      marca: L.circleMarker(AOI_DEFECTO[0], { radius: 9, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 })
+        .bindTooltip(String(i + 1), { permanent: true, direction: 'center', className: 'etiqueta-uav' }).addTo(capaFlota),
+    };
+  });
+  const efimeras = L.layerGroup().addTo(capaFlota);
+  anim.capas = { zonas, uavs, efimeras };
+  anim.fin = lt.fin_s;
+  $('txt-fin').textContent = num(lt.fin_s, 0);
+  // Bitácora completa, ordenada en el tiempo
+  const filas = [];
+  lt.uavs.forEach((u, i) => u.eventos.forEach((e) => {
+    const def = TEXTO_EVENTO[e.tipo];
+    if (def) filas.push({ t: e.t_s, texto: def[0](i + 1, e), clase: def[1] });
+  }));
+  lt.avisos.filter((a) => a.tipo === 'silencio').forEach((a) => filas.push({
+    t: a.t_s, clase: 'clave', texto: `La flota deja de oír al UAV ${a.origen + 1} y marca su zona para evitarla`,
+  }));
+  anim.bitacora = filas.sort((a, b) => a.t - b.t);
+}
+
+function dibujarInstante() {
+  if (!anim.datos || !anim.capas) return;
+  const lt = anim.datos.animacion[anim.modo];
+  const t = anim.t;
+  lt.fallas.forEach((f, i) => {
+    anim.capas.zonas[i].setStyle(t >= f.inicio_s
+      ? { color: '#b91c1c', fillColor: '#ef4444', fillOpacity: 0.25, dashArray: null, opacity: 0.9 }
+      : { color: '#6b7280', fillColor: '#9ca3af', fillOpacity: 0.04, dashArray: '4 6', opacity: 0.6 });
+  });
+  const estadoTxt = [];
+  lt.uavs.forEach((u, i) => {
+    const color = COLOR_UAV[i % COLOR_UAV.length];
+    const capas = anim.capas.uavs[i];
+    const pos = posicionEn(u.trayectoria, t);
+    const enTierra = t < u.despegue_s;
+    const fin = ultimoEvento(u.eventos, t, FINALES);
+    if (pos) capas.marca.setLatLng(pos);
+    capas.marca.setStyle({ fillOpacity: enTierra ? 0.35 : 1, fillColor: fin && fin.tipo !== 'completada' ? '#111827' : color });
+    const pasados = u.trayectoria.filter((p) => p.t_s <= t).map((p) => p.pos);
+    capas.hecho.setLatLngs(pos && !enTierra ? [...pasados, pos] : []);
+    const plan = fin ? null : ultimoEvento(u.eventos, t, ['plan', 'replan', 'replan_aviso']);
+    capas.plan.setLatLngs(plan && plan.ruta ? plan.ruta : []);
+    const cambios = u.eventos.filter((e) => e.tipo === 'replan_aviso' && e.t_s <= t).length;
+    let txt = enTierra ? 'en tierra' : 'volando';
+    if (fin) {
+      if (fin.tipo === 'completada') txt = 'completó';
+      else if (fin.tipo === 'atrapado' || fin.tipo.startsWith('perdido')) txt = 'sin enlace';
+      else txt = 'abortó';
+    }
+    estadoTxt.push(`<div><span class="punto-uav" style="background:${color}"></span>`
+      + `UAV ${i + 1}: ${txt}${cambios ? ` · ${cambios} cambio(s) por aviso` : ''}</div>`);
+  });
+  $('estado-uav').innerHTML = estadoTxt.join('');
+  // Avisos: pulso en el origen y líneas hacia quienes lo reciben, durante unos segundos
+  const ef = anim.capas.efimeras;
+  ef.clearLayers();
+  const radio = (anim.datos.radio_silencio_km || 0.6) * 1000;
+  lt.avisos.forEach((a) => {
+    const color = a.tipo === 'silencio' ? '#7c3aed' : '#f59e0b';
+    if (a.tipo === 'silencio' && t >= a.t_s) {
+      L.circle(a.pos, { radius: radio, color, weight: 2, dashArray: '5 5', fillOpacity: 0.06 })
+        .bindTooltip(`Zona marcada por el silencio del UAV ${a.origen + 1}`).addTo(ef);
+    }
+    const dt = t - a.t_s;
+    if (dt < 0 || dt > 25) return;
+    L.circleMarker(a.pos, { radius: 8 + dt * 1.2, color, weight: 3, fill: false, opacity: 1 - dt / 25 }).addTo(ef);
+    Object.entries(a.recepciones).forEach(([j, tr]) => {
+      const k = Number(j);
+      if (k === a.origen || t < tr || t > tr + 15) return;
+      const destino = posicionEn(lt.uavs[k].trayectoria, t);
+      if (destino) L.polyline([a.pos, destino], { color, weight: 2, dashArray: '2 6', opacity: 0.9 }).addTo(ef);
+    });
+  });
+  $('txt-t').textContent = num(t, 0);
+  $('rng-t').value = anim.fin ? Math.round((1000 * t) / anim.fin) : 0;
+  const visibles = anim.bitacora.filter((f) => f.t <= t).slice(-12).reverse();
+  $('bitacora').innerHTML = visibles
+    .map((f) => `<li class="${f.clase}"><span class="t">${num(f.t, 0)} s</span> ${esc(f.texto)}</li>`).join('');
+}
+
+function pausar() {
+  anim.jugando = false;
+  anim.ultimo = null;
+  $('btn-play').textContent = '▶ Reproducir';
+}
+
+function cuadro(ahora) {
+  if (!anim.jugando) return;
+  if (anim.ultimo !== null) anim.t = Math.min(anim.fin, anim.t + ((ahora - anim.ultimo) / 1000) * Number($('sel-vel').value));
+  anim.ultimo = ahora;
+  dibujarInstante();
+  if (anim.t >= anim.fin) { pausar(); return; }
+  requestAnimationFrame(cuadro);
+}
+
+$('btn-play').addEventListener('click', () => {
+  if (anim.jugando) { pausar(); return; }
+  if (anim.t >= anim.fin) anim.t = 0;
+  anim.jugando = true;
+  $('btn-play').textContent = '❚❚ Pausa';
+  requestAnimationFrame(cuadro);
+});
+$('rng-t').addEventListener('input', (e) => { anim.t = (Number(e.target.value) / 1000) * anim.fin; dibujarInstante(); });
+$('sel-modo').addEventListener('change', (e) => { anim.modo = e.target.value; armarCapas(); dibujarInstante(); });
+
+const ETIQUETA_FLOTA = {
+  D_dijkstra_replan: 'Sin aviso (D)',
+  C_propuesta: 'Sin aviso, propuesta (C)',
+  D_A_dijkstra_replan_aviso: 'Con aviso, Dijkstra (D_A)',
+  C_A_propuesta_aviso: 'Con aviso, propuesta (C_A)',
+};
+const etiquetaFlota = (n) => ETIQUETA_FLOTA[n] || n;
+
+function mostrarFlota(res) {
+  const filas = Object.entries(res.resumen).map(([n, s]) => `<tr><td>${esc(etiquetaFlota(n))}</td>`
+    + `<td>${pct(s.R_uav)}</td><td>${pct(s.R_seguidores)}</td><td>${num(s.perdidos_media)}</td>`
+    + `<td>${num(s.replan_por_aviso_media)}</td><td>${num(s.demora_aviso_media_s, 1)}</td></tr>`);
+  const difs = (res.diferenciales_seguidores || []).map((d) => {
+    const v = Number(d.delta_R_pp);
+    return `<li>${esc(etiquetaFlota(d.metodo))} frente a ${esc(etiquetaFlota(d.referencia))}: `
+      + `<strong class="${v > 0 ? 'pos' : (v < 0 ? 'neg' : '')}">${v > 0 ? '+' : ''}${num(v, 1)} pp</strong> `
+      + `<span class="ayuda">(gana ${esc(d.solo_metodo_completa)}, pierde ${esc(d.solo_referencia_completa)}; `
+      + `McNemar p = ${num(d.p_mcnemar, 4)})</span></li>`;
+  });
+  const avisos = (res.advertencias || []).map((a) => `<div class="aviso">${esc(a)}</div>`).join('');
+  const ej = res.escenario_animado || {};
+  $('contenido-flota').innerHTML = `
+    ${avisos}
+    <p class="ayuda">Escenario animado: semilla ${esc(ej.semilla)} (${esc(ej.motivo)}). Las métricas son de
+      ${esc(res.n_escenarios)} escenarios con ${esc(res.n_fallas)} zonas cada uno.</p>
+    <table>
+      <thead><tr><th>Estrategia</th><th>R_uav</th><th>seguidores</th><th>perdidos</th><th>cambios por aviso</th><th>demora (s)</th></tr></thead>
+      <tbody>${filas.join('')}</tbody>
+    </table>
+    <p class="ayuda">R_uav: misiones de UAV completadas. Seguidores: del UAV 2 en adelante, los que pueden aprovechar
+      un aviso. Demora: desde la detección, o la pérdida del UAV, hasta que cada otro UAV se entera.</p>
+    <h3>Diferencial en los seguidores</h3>
+    <ul class="difs">${difs.join('')}</ul>
+    <p class="ayuda">Presupuesto ${num(res.presupuesto_km)} km por UAV = (1 + β) × ${num(res.largo_minimo_km)} km.
+      Focos de las zonas: ${esc(res.origen_focos)} (${esc(res.n_focos)}). Las zonas de interferencia son círculos sintéticos.</p>`;
+}
+
+$('form-flota').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const f = $('form-flota');
+  const cuerpo = {
+    preferencias: leerPreferencias(),
+    n_uav: Number(f.elements.n_uav.value) || 4,
+    separacion_km: Number(f.elements.separacion_km.value) || 1,
+    prob_deteccion: Number(f.elements.prob_deteccion.value),
+    alcance_com_km: Number(f.elements.alcance_com_km.value) || null,
+    n_fallas: Number(f.elements.n_fallas.value) || 3,
+    n_escenarios: Number(f.elements.n_escenarios.value) || 30,
+  };
+  if (estado.origen && estado.destino) {
+    cuerpo.origen = estado.origen;
+    cuerpo.destino = estado.destino;
+  }
+  const boton = $('btn-flota');
+  boton.disabled = true;
+  pausar();
+  $('txt-flota').textContent = 'Simulando la flota sin aviso y con aviso…';
+  try {
+    anim.datos = await pedir('/api/flota', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
+    });
+    anim.t = 0;
+    anim.modo = $('sel-modo').value;
+    armarCapas();
+    dibujarInstante();
+    $('reproductor').hidden = false;
+    mostrarFlota(anim.datos);
+    const puntos = anim.datos.animacion[anim.modo].uavs.flatMap((u) => u.trayectoria.map((p) => p.pos));
+    if (puntos.length) mapa.fitBounds(L.latLngBounds(puntos), { padding: [30, 30] });
+    $('txt-flota').textContent = 'Listo. Pulsa reproducir y cambia entre "con aviso" y "sin aviso" para comparar el mismo escenario.';
+  } catch (e) {
+    $('txt-flota').textContent = `Error: ${e.message}`;
+  } finally {
+    boton.disabled = false;
+  }
+});

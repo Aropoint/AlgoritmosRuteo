@@ -38,6 +38,7 @@ class Contexto:
     excluidas: frozenset[int]
     conocidas: set[int] = field(default_factory=set)       # tramos vistos bloqueados
     penalizadas: dict[int, float] = field(default_factory=dict)
+    evitar: set[int] = field(default_factory=set)          # zona avisada por silencio de otro UAV (ruteo/flota.py)
     presupuesto_km: float = math.inf
     km: float = 0.0        # recorridos hasta ahora
     cola_km: float = 0.0   # km mínimos de los tramos posteriores al objetivo actual
@@ -47,7 +48,7 @@ class Contexto:
         return cls(g, cfg, viento, aristas_excluidas(g, cfg.preferencias))
 
     def no_transitables(self) -> set[int]:
-        return set(self.excluidas) | self.conocidas
+        return set(self.excluidas) | self.conocidas | self.evitar
 
     def holgura_km(self) -> float:
         """km disponibles para llegar al objetivo actual sin comprometer el resto de la misión."""

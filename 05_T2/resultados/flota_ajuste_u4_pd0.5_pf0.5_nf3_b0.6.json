@@ -1,0 +1,367 @@
+{
+  "etiqueta": "ajuste_u4_pd0.5_pf0.5_nf3_b0.6",
+  "configuracion": {
+    "malla": {
+      "espaciado_km": 0.5,
+      "jitter": 0.25,
+      "diagonales": true,
+      "fraccion_eliminada": 0.12,
+      "semilla": 7
+    },
+    "mision": {
+      "inicio": [
+        0.08,
+        0.1
+      ],
+      "observacion": [
+        [
+          0.35,
+          0.7
+        ],
+        [
+          0.65,
+          0.3
+        ],
+        [
+          0.8,
+          0.75
+        ]
+      ],
+      "destino": [
+        0.92,
+        0.92
+      ]
+    },
+    "preferencias": {
+      "altura_vuelo_m": 60.0,
+      "margen_vertical_m": 10.0,
+      "respetar_zonas_restringidas": true,
+      "viento_max_m_s": 12.0,
+      "velocidad_crucero_m_s": 12.0,
+      "desvio_max": 0.35,
+      "presupuesto_extra": 0.6,
+      "peso_riesgo": 1.0
+    },
+    "algoritmo": {
+      "k_candidatas": 8,
+      "peso_longitud": 1.0,
+      "peso_solape": 1.0,
+      "d_separacion_km": 0.4,
+      "radio_incertidumbre_km": 0.6,
+      "penalizacion_incertidumbre": 3.0
+    },
+    "fallas": {
+      "n_fallas": 3,
+      "radio_min_km": 0.25,
+      "radio_max_km": 0.6,
+      "prob_foco": 0.5,
+      "sigma_foco_km": 0.5,
+      "inicio_max_frac": 0.8,
+      "n_focos": 4,
+      "n_eventos_historicos": 60
+    },
+    "flota": {
+      "n_uav": 4,
+      "separacion_km": 1.0,
+      "alcance_com_km": 3.0,
+      "intervalo_beacon_s": 2.0,
+      "beacons_para_alerta": 3,
+      "prob_deteccion": 0.5
+    }
+  },
+  "aoi": {
+    "nombre": "Mykolaiv (referencia provisional)",
+    "sur": 46.945,
+    "oeste": 31.95,
+    "norte": 47.005,
+    "este": 32.04
+  },
+  "grafo": {
+    "nodos": 196,
+    "aristas": 618,
+    "excluidas_por_restriccion": 0
+  },
+  "secuencia_mision": [
+    15,
+    131,
+    65,
+    151,
+    181
+  ],
+  "largo_minimo_km": 13.1637,
+  "presupuesto_km": 21.0619,
+  "n_escenarios": 100,
+  "resumen": {
+    "A_dijkstra_fijo": {
+      "n_escenarios": 100,
+      "R_uav": 0.795,
+      "R_lider": 0.86,
+      "R_seguidores": 0.7733,
+      "R_flota_alguno": 0.9,
+      "R_flota_todos": 0.68,
+      "perdidos_media": 0.71,
+      "avisos_media": 0,
+      "replan_por_aviso_media": 0,
+      "replanificaciones_media": 0.152,
+      "demora_aviso_media_s": null,
+      "demora_por_tipo_media_s": {
+        "deteccion": null,
+        "silencio": null
+      },
+      "recepciones_inmediatas": null,
+      "km_medio_exitosas": 13.385,
+      "sobrelongitud_media_exitosas": 0.0168,
+      "tiempo_calculo_ms_medio": 1.44,
+      "motivos_fallo": {
+        "sin_alternativa": 11,
+        "perdido_en_interferencia": 70,
+        "atrapado": 1
+      }
+    },
+    "D_dijkstra_replan": {
+      "n_escenarios": 100,
+      "R_uav": 0.7825,
+      "R_lider": 0.82,
+      "R_seguidores": 0.77,
+      "R_flota_alguno": 0.87,
+      "R_flota_todos": 0.68,
+      "perdidos_media": 0.87,
+      "avisos_media": 0,
+      "replan_por_aviso_media": 0,
+      "replanificaciones_media": 0.163,
+      "demora_aviso_media_s": null,
+      "demora_por_tipo_media_s": {
+        "deteccion": null,
+        "silencio": null
+      },
+      "recepciones_inmediatas": null,
+      "km_medio_exitosas": 13.195,
+      "sobrelongitud_media_exitosas": 0.0024,
+      "tiempo_calculo_ms_medio": 0.61,
+      "motivos_fallo": {
+        "perdido_en_interferencia": 86,
+        "atrapado": 1
+      }
+    },
+    "C_propuesta": {
+      "n_escenarios": 100,
+      "R_uav": 0.84,
+      "R_lider": 0.88,
+      "R_seguidores": 0.8267,
+      "R_flota_alguno": 0.93,
+      "R_flota_todos": 0.75,
+      "perdidos_media": 0.64,
+      "avisos_media": 0,
+      "replan_por_aviso_media": 0,
+      "replanificaciones_media": 0.147,
+      "demora_aviso_media_s": null,
+      "demora_por_tipo_media_s": {
+        "deteccion": null,
+        "silencio": null
+      },
+      "recepciones_inmediatas": null,
+      "km_medio_exitosas": 14.107,
+      "sobrelongitud_media_exitosas": 0.0717,
+      "tiempo_calculo_ms_medio": 30.77,
+      "motivos_fallo": {
+        "perdido_en_interferencia": 64
+      }
+    },
+    "D_A_dijkstra_replan_aviso": {
+      "n_escenarios": 100,
+      "R_uav": 0.8575,
+      "R_lider": 0.82,
+      "R_seguidores": 0.87,
+      "R_flota_alguno": 0.95,
+      "R_flota_todos": 0.71,
+      "perdidos_media": 0.57,
+      "avisos_media": 2.21,
+      "replan_por_aviso_media": 0.092,
+      "replanificaciones_media": 0.24,
+      "demora_aviso_media_s": 2.25,
+      "demora_por_tipo_media_s": {
+        "deteccion": 0.84,
+        "silencio": 6.0
+      },
+      "recepciones_inmediatas": 0.7223,
+      "km_medio_exitosas": 13.225,
+      "sobrelongitud_media_exitosas": 0.0047,
+      "tiempo_calculo_ms_medio": 0.65,
+      "motivos_fallo": {
+        "perdido_en_interferencia": 56,
+        "atrapado": 1
+      }
+    },
+    "C_A_propuesta_aviso": {
+      "n_escenarios": 100,
+      "R_uav": 0.9125,
+      "R_lider": 0.86,
+      "R_seguidores": 0.93,
+      "R_flota_alguno": 0.99,
+      "R_flota_todos": 0.79,
+      "perdidos_media": 0.35,
+      "avisos_media": 2.12,
+      "replan_por_aviso_media": 0.312,
+      "replanificaciones_media": 0.405,
+      "demora_aviso_media_s": 1.54,
+      "demora_por_tipo_media_s": {
+        "deteccion": 0.64,
+        "silencio": 6.0
+      },
+      "recepciones_inmediatas": 0.8297,
+      "km_medio_exitosas": 14.237,
+      "sobrelongitud_media_exitosas": 0.0816,
+      "tiempo_calculo_ms_medio": 31.91,
+      "motivos_fallo": {
+        "perdido_en_interferencia": 35
+      }
+    }
+  },
+  "diferenciales": [
+    {
+      "metodo": "D_A_dijkstra_replan_aviso",
+      "referencia": "D_dijkstra_replan",
+      "delta_R_pp": 10.0,
+      "delta_R_relativo": 0.1299,
+      "solo_metodo_completa": 30,
+      "solo_referencia_completa": 0,
+      "p_mcnemar": 0.0,
+      "km_extra_medio_pareado": -0.003,
+      "km_extra_relativo_minimo": -0.0002,
+      "poblacion": "seguidores"
+    },
+    {
+      "metodo": "D_A_dijkstra_replan_aviso",
+      "referencia": "D_dijkstra_replan",
+      "delta_R_pp": 7.5,
+      "delta_R_relativo": 0.0958,
+      "solo_metodo_completa": 30,
+      "solo_referencia_completa": 0,
+      "p_mcnemar": 0.0,
+      "km_extra_medio_pareado": -0.002,
+      "km_extra_relativo_minimo": -0.0001,
+      "poblacion": "todos_los_uav"
+    },
+    {
+      "metodo": "C_A_propuesta_aviso",
+      "referencia": "D_A_dijkstra_replan_aviso",
+      "delta_R_pp": 6.0,
+      "delta_R_relativo": 0.069,
+      "solo_metodo_completa": 29,
+      "solo_referencia_completa": 11,
+      "p_mcnemar": 0.00643,
+      "km_extra_medio_pareado": 0.965,
+      "km_extra_relativo_minimo": 0.0733,
+      "poblacion": "seguidores"
+    },
+    {
+      "metodo": "C_A_propuesta_aviso",
+      "referencia": "D_A_dijkstra_replan_aviso",
+      "delta_R_pp": 5.5,
+      "delta_R_relativo": 0.0641,
+      "solo_metodo_completa": 37,
+      "solo_referencia_completa": 15,
+      "p_mcnemar": 0.00319,
+      "km_extra_medio_pareado": 0.933,
+      "km_extra_relativo_minimo": 0.0709,
+      "poblacion": "todos_los_uav"
+    },
+    {
+      "metodo": "C_A_propuesta_aviso",
+      "referencia": "D_dijkstra_replan",
+      "delta_R_pp": 16.0,
+      "delta_R_relativo": 0.2078,
+      "solo_metodo_completa": 58,
+      "solo_referencia_completa": 10,
+      "p_mcnemar": 0.0,
+      "km_extra_medio_pareado": 0.936,
+      "km_extra_relativo_minimo": 0.0711,
+      "poblacion": "seguidores"
+    },
+    {
+      "metodo": "C_A_propuesta_aviso",
+      "referencia": "D_dijkstra_replan",
+      "delta_R_pp": 13.0,
+      "delta_R_relativo": 0.1661,
+      "solo_metodo_completa": 66,
+      "solo_referencia_completa": 14,
+      "p_mcnemar": 0.0,
+      "km_extra_medio_pareado": 0.908,
+      "km_extra_relativo_minimo": 0.069,
+      "poblacion": "todos_los_uav"
+    },
+    {
+      "metodo": "C_A_propuesta_aviso",
+      "referencia": "C_propuesta",
+      "delta_R_pp": 10.33,
+      "delta_R_relativo": 0.125,
+      "solo_metodo_completa": 36,
+      "solo_referencia_completa": 5,
+      "p_mcnemar": 0.0,
+      "km_extra_medio_pareado": 0.073,
+      "km_extra_relativo_minimo": 0.0056,
+      "poblacion": "seguidores"
+    },
+    {
+      "metodo": "C_A_propuesta_aviso",
+      "referencia": "C_propuesta",
+      "delta_R_pp": 7.25,
+      "delta_R_relativo": 0.0863,
+      "solo_metodo_completa": 36,
+      "solo_referencia_completa": 7,
+      "p_mcnemar": 1e-05,
+      "km_extra_medio_pareado": 0.054,
+      "km_extra_relativo_minimo": 0.0041,
+      "poblacion": "todos_los_uav"
+    },
+    {
+      "metodo": "C_A_propuesta_aviso",
+      "referencia": "A_dijkstra_fijo",
+      "delta_R_pp": 15.67,
+      "delta_R_relativo": 0.2026,
+      "solo_metodo_completa": 56,
+      "solo_referencia_completa": 9,
+      "p_mcnemar": 0.0,
+      "km_extra_medio_pareado": 0.763,
+      "km_extra_relativo_minimo": 0.0579,
+      "poblacion": "seguidores"
+    },
+    {
+      "metodo": "C_A_propuesta_aviso",
+      "referencia": "A_dijkstra_fijo",
+      "delta_R_pp": 11.75,
+      "delta_R_relativo": 0.1478,
+      "solo_metodo_completa": 60,
+      "solo_referencia_completa": 13,
+      "p_mcnemar": 0.0,
+      "km_extra_medio_pareado": 0.729,
+      "km_extra_relativo_minimo": 0.0554,
+      "poblacion": "todos_los_uav"
+    },
+    {
+      "metodo": "D_dijkstra_replan",
+      "referencia": "A_dijkstra_fijo",
+      "delta_R_pp": -0.33,
+      "delta_R_relativo": -0.0043,
+      "solo_metodo_completa": 2,
+      "solo_referencia_completa": 3,
+      "p_mcnemar": 1.0,
+      "km_extra_medio_pareado": -0.125,
+      "km_extra_relativo_minimo": -0.0095,
+      "poblacion": "seguidores"
+    },
+    {
+      "metodo": "D_dijkstra_replan",
+      "referencia": "A_dijkstra_fijo",
+      "delta_R_pp": -1.25,
+      "delta_R_relativo": -0.0157,
+      "solo_metodo_completa": 2,
+      "solo_referencia_completa": 7,
+      "p_mcnemar": 0.17969,
+      "km_extra_medio_pareado": -0.117,
+      "km_extra_relativo_minimo": -0.0089,
+      "poblacion": "todos_los_uav"
+    }
+  ],
+  "segundos": 27.2
+}
