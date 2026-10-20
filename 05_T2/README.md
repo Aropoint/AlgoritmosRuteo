@@ -24,6 +24,8 @@ python main.py --detener
 
 El sitio queda en **http://localhost:8000**. `main.py` crea `.env` con una contraseña aleatoria si no existe (plantilla en `.env.example`). Las fechas de la ventana de datos también se definen ahí.
 
+`--solo-sitio` levanta los contenedores, pero **no crea las tablas ni carga el grafo**. En una base nueva, o si el volumen de Docker se reinició, ejecuta primero `python main.py` desde la raíz del repositorio. El mensaje de PostgreSQL `Skipping initialization` solo indica que ya existe un directorio de base de datos; no confirma que existan las tablas `nodos` y `mision`. Después de editar `SitioWeb/app.py`, reinicia el servidor con `docker compose restart web` para que cargue el código nuevo.
+
 Si se prefiere hacerlo a mano:
 
 ```bash
@@ -140,15 +142,18 @@ incendios_guerra_historicos (3)».
 `Amenazas/` filtraron sus descargas. Además es lo correcto físicamente: una falla centrada justo
 fuera del AOI igual alcanza tramos de la malla.
 
-**Consecuencia para los números.** La tabla de más arriba y los JSON de `resultados/` se produjeron
-**antes** de este arreglo, con focos históricos. Hay que **regenerar las rutas de ejemplo y la
-evaluación** antes de presentar:
+**Consecuencia para los números.** La tabla de la primera corrida y el ejemplo de la base se
+produjeron antes de este arreglo, con el respaldo de focos históricos. Hay que **regenerar las rutas
+de ejemplo y la evaluación del sitio** antes de presentar. El ejemplo ahora calcula los cuatro
+tramos obligatorios de la misión en lugar de ir directamente del inicio al destino:
 
 ```bash
 docker compose --profile tareas run --rm app python BD/rutas_ejemplo.py
 ```
 
-Es esperable que ΔR(C−A) cambie: con focos históricos las fallas caían sobre los tramos que el
-método ya evitaba por tener `r_incendios` alto, lo que favorecía a la propuesta.
+Es esperable que ΔR(C−A) del ejemplo de BD cambie: con focos históricos las fallas caían sobre los
+tramos que el método ya evitaba por tener `r_incendios` alto. Los JSON de `resultados/` proceden del
+simulador Python, que genera sus propios focos sintéticos y no llama a `focos_bd`; este arreglo no
+modifica retroactivamente esas cifras de ajuste.
 
 **Resultado preliminar principal:** C supera a Dijkstra (A) en hasta +22 pp de misiones completadas, pero **no** supera a la ablación D (Dijkstra que replanifica). El detalle está en PROPUESTA_TECNICA §9.

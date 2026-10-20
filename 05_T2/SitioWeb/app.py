@@ -5,7 +5,7 @@
 - GET  /api/capas/{nombre}    capas GeoJSON: aristas, mision, edificios, gpsjam, incendios, eventos
 - GET  /api/preferencias      preferencias por defecto (rúbrica 6.2) y viento de la ventana
 - GET  /api/ejemplo           rutas de ejemplo de la misión (BD/rutas_ejemplo.py: pgr_dijkstra y propuesta)
-- POST /api/rutas             (origen, destino, preferencias) -> 2 rutas Dijkstra + 2 de la propuesta + resiliencia
+- POST /api/rutas             consulta libre entre dos nodos o misión completa por tramos obligatorios
 
 Uso (dentro del contenedor web):  uvicorn SitioWeb.app:app --host 0.0.0.0 --port 8000
 """
@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field  # noqa: E402
 
 from comun.bd import conectar  # noqa: E402
 from comun.rutas import viento_bd  # noqa: E402
-from comun.servicio import nodo_mas_cercano, resolver  # noqa: E402
+from comun.servicio import nodo_mas_cercano, resolver, resolver_mision  # noqa: E402
 from ruteo.config import AOI, Preferencias  # noqa: E402
 
 ESTATICO = Path(__file__).resolve().parent / "static"
@@ -78,8 +78,9 @@ class PreferenciasEntrada(BaseModel):
 
 
 class SolicitudRutas(BaseModel):
-    origen: Punto
-    destino: Punto
+    origen: Punto | None = None
+    destino: Punto | None = None
+    usar_mision: bool = False
     preferencias: PreferenciasEntrada = PreferenciasEntrada()
     n_fallas: int = Field(3, ge=1, le=10)
     n_escenarios: int = Field(100, ge=10, le=100)
@@ -134,10 +135,18 @@ def ejemplo():
 @app.post("/api/rutas")
 def rutas(solicitud: SolicitudRutas):
     prefs = _preferencias(solicitud.preferencias)
+    if not solicitud.usar_mision and (solicitud.origen is None or solicitud.destino is None):
+        raise HTTPException(422, "Define origen y destino para una consulta libre.")
     with conectar() as conn:
-        s = nodo_mas_cercano(conn, solicitud.origen.lat, solicitud.origen.lon)
-        t = nodo_mas_cercano(conn, solicitud.destino.lat, solicitud.destino.lon)
-        resultado = resolver(conn, s, t, prefs, n_escenarios=solicitud.n_escenarios, n_fallas=solicitud.n_fallas)
+        if solicitud.usar_mision:
+            secuencia = [fila[0] for fila in conn.execute("SELECT nodo_id FROM mision ORDER BY orden")]
+            resultado = resolver_mision(conn, secuencia, prefs,
+                                       n_escenarios=solicitud.n_escenarios, n_fallas=solicitud.n_fallas)
+        else:
+            s = nodo_mas_cercano(conn, solicitud.origen.lat, solicitud.origen.lon)
+            t = nodo_mas_cercano(conn, solicitud.destino.lat, solicitud.destino.lon)
+            resultado = resolver(conn, s, t, prefs, n_escenarios=solicitud.n_escenarios,
+                                 n_fallas=solicitud.n_fallas)
     if "error" in resultado and "dijkstra" not in resultado:
         raise HTTPException(422, resultado["error"])
     return resultado

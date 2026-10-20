@@ -21,7 +21,7 @@ La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guí
 3. **Metadata (3).** Extracción a JSON en `Metadata/salida/` y carga en `meta_*`.
 4. **Amenazas (3).** Extracción a JSON en `Amenazas/salida/` y carga en `amz_*`.
 5. **Transformación a pesos.** `BD/asignar_pesos.py` ejecuta `BD/pesos.sql`: restricciones y riesgo por arista.
-6. **Rutas de ejemplo.** `BD/rutas_ejemplo.py`: `pgr_dijkstra` y `pgr_KSP` + selección, con su resiliencia.
+6. **Rutas de ejemplo.** `BD/rutas_ejemplo.py`: compara `pgr_dijkstra` y `pgr_KSP` + selección en cada tramo obligatorio y evalúa la misión completa. La consulta libre de origen–destino sigue disponible en el sitio.
 7. **Diagrama.** `BD/diagrama_bd.py` genera `BD/diagrama_bd.png`.
 8. **Sitio.** `docker compose up web` → http://localhost:8000.
 
@@ -44,7 +44,7 @@ La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guí
 | 8 | k ≥ 2 rutas solo con `pgr_dijkstra` por km | 4 | `comun/rutas.py` (`dijkstra_dos_rutas_pgr`), `BD/rutas_ejemplo.py` | Mapa con las 2 rutas azules del ejemplo y la consulta SQL |
 | 9 | k ≥ 2 rutas con el algoritmo propuesto | 4 | `comun/rutas.py` (`ksp_pgr`, `propuesta_pgr`) | Mapa con las 2 rutas naranjas |
 | 10 | Métrica de resiliencia de k rutas | 6 | `comun/resiliencia.py`, `ruteo/metricas.py` | `R_par` (alguna ruta del par queda libre) y `R_mision` (llega dentro del presupuesto) sobre N escenarios |
-| 11.1 | Plataforma: (inicio, objetivo) + restricciones → mapa con el par | 4 | `SitioWeb/app.py`, `SitioWeb/static/` | Demostración: clic en origen y destino, cambio de una preferencia, "Calcular rutas" |
+| 11.1 | Plataforma: (inicio, objetivo) + restricciones → mapa con el par | 4 | `SitioWeb/app.py`, `SitioWeb/static/` | Demostración: clic en origen y destino para consulta libre; «Usar la misión» calcula A→P1→P2→P3→B por tramos, con las mismas preferencias |
 | 11.2 | Diferencial de resiliencia | 2 | Panel de resultados del sitio, tabla `evaluaciones` | ΔR = R(C) − R(A) en pp, con el p de McNemar. Mostrar también C − D (ablación) |
 
 ## Puntos del enunciado que no son criterios

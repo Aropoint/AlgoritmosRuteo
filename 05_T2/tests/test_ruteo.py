@@ -6,6 +6,7 @@ import unittest
 from dataclasses import replace
 from itertools import count
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -16,6 +17,7 @@ from ruteo.geo import ProyeccionLocal, haversine_km  # noqa: E402
 from ruteo.grafo import Grafo, generar_malla, nodos_mision  # noqa: E402
 from ruteo.pesos import Viento, arista_admisible, costo_km, factor_viento  # noqa: E402
 from ruteo.simulador import ESTRATEGIAS, ejecutar_mision, largo_minimo_mision  # noqa: E402
+from comun.resiliencia import evaluar  # noqa: E402
 
 LAT0, LON0 = 46.975, 31.995
 
@@ -194,6 +196,21 @@ class PruebasSimulador(unittest.TestCase):
         r = ejecutar_mision(g, self.cfg, [0, 4, 8], esc, ESTRATEGIAS["D"](), 100.0)
         self.assertFalse(r.exito)
         self.assertEqual(r.motivo, "atrapado")
+
+    def test_evaluacion_mision_usa_todos_los_puntos_obligatorios(self):
+        g = grafo_cuadricula(2, 2)
+        secuencia = [0, 2, 1]  # la ruta directa 0→1 omitiría el punto 2
+        leg1 = ruta_por_nodos(g, [0, 2])
+        leg2 = ruta_por_nodos(g, [2, 0, 1])
+        pares = [[leg1], [leg2]]
+        with patch('comun.resiliencia.generar_escenario', return_value=Escenario(0, [], {})):
+            resultado = evaluar(g, 0, 1, Preferencias(), None, pares[0], pares[0], [],
+                                n_escenarios=1, secuencia=secuencia,
+                                pares_dijkstra=pares, pares_propuesta=pares)
+        self.assertEqual(resultado['secuencia_mision'], secuencia)
+        self.assertAlmostEqual(resultado['largo_minimo_km'], 3.0, places=2)
+        self.assertEqual(resultado['r_mision']['A_dijkstra_fijo'], 1.0)
+        self.assertEqual(resultado['r_mision']['C_propuesta'], 1.0)
 
 
 class PruebasEscenario(unittest.TestCase):

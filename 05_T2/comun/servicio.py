@@ -95,3 +95,81 @@ def resolver(conn, s: int, t: int, prefs: Preferencias = Preferencias(),
         ).fetchone()[0]
         conn.commit()
     return salida
+
+
+def resolver_mision(conn, secuencia: list[int], prefs: Preferencias = Preferencias(),
+                   params: ParametrosAlgoritmo = ParametrosAlgoritmo(),
+                   n_escenarios: int = 100, n_fallas: int = 3, guardar: bool = True) -> dict:
+    """Calcula cada tramo obligatorio y evalúa la misión completa, sin saltar observaciones."""
+    if len(secuencia) < 2 or len(set(secuencia)) != len(secuencia):
+        return {"error": "La misión debe contener puntos distintos en un orden definido."}
+    s, t = secuencia[0], secuencia[-1]
+    elevacion = elevacion_nodo(conn, s)
+    g = grafo_desde_bd(conn, elevacion)
+    if any(n not in g.nodos for n in secuencia):
+        return {"error": "Algún punto de la misión no existe en el grafo."}
+    viento, viento_info = viento_bd(conn, prefs.altura_vuelo_m)
+    excluidas = aristas_excluidas(g, prefs)
+    costo_p = costo_propuesta(g, prefs, viento)
+    costo_d = costo_km(g)
+    salida: dict = {
+        "modo": "mision", "origen": s, "destino": t, "secuencia_mision": secuencia,
+        "preferencias": asdict(prefs), "parametros_algoritmo": asdict(params),
+        "elevacion_origen_m": elevacion, "viento": viento_info,
+        "aristas_excluidas": sorted(excluidas), "tramos": [], "advertencias": [],
+    }
+    if not mision_admisible(viento, prefs):
+        salida["advertencias"].append(
+            f"Misión no admisible: viento de {viento.velocidad_m_s} m/s a la altura de vuelo supera el máximo "
+            f"de {prefs.viento_max_m_s} m/s. Las rutas se muestran solo como referencia.")
+
+    pares_dijkstra: list[list] = []
+    pares_propuesta: list[list] = []
+    etiquetas = ["A"] + [f"P{i}" for i in range(1, len(secuencia) - 1)] + ["B"]
+    for indice, (a, b) in enumerate(zip(secuencia, secuencia[1:])):
+        dijkstra = dijkstra_dos_rutas_pgr(conn, a, b, excluidas)
+        if not dijkstra:
+            return {"error": f"No hay ruta admisible para el tramo {indice + 1}: {a} → {b}."}
+        seleccion = propuesta_pgr(conn, g, a, b, prefs, params, viento, excluidas, dijkstra[0])
+        propuesta = [r for r in (seleccion.principal, seleccion.alternativa) if r is not None] if seleccion else []
+        pares_dijkstra.append(dijkstra)
+        pares_propuesta.append(propuesta)
+        if len(dijkstra) < 2:
+            salida["advertencias"].append(f"El tramo {indice + 1} tiene una sola ruta Dijkstra distinta.")
+        if len(propuesta) < 2:
+            salida["advertencias"].append(f"El tramo {indice + 1} tiene menos de dos rutas propuestas válidas.")
+        salida["tramos"].append({
+            "numero": indice + 1, "origen": a, "destino": b,
+            "etiqueta": f"{etiquetas[indice]} → {etiquetas[indice + 1]}",
+            "dijkstra": [ruta_a_dict(g, r, costo_d) for r in dijkstra],
+            "propuesta": [ruta_a_dict(g, r, costo_p) for r in propuesta],
+            "seleccion": _redondear({"J": seleccion.puntaje, **seleccion.detalle}) if seleccion else None,
+        })
+
+    focos, origen_focos = focos_bd(conn, g)
+    evaluacion = evaluar(g, s, t, prefs, viento, pares_dijkstra[0], pares_propuesta[0],
+                        focos, n_escenarios, n_fallas, secuencia=secuencia,
+                        pares_dijkstra=pares_dijkstra, pares_propuesta=pares_propuesta)
+    evaluacion.update(origen_focos=origen_focos, n_focos=len(focos))
+    salida["resiliencia"] = evaluacion
+
+    if guardar and "error" not in evaluacion:
+        for tramo in salida["tramos"]:
+            for metodo in ("dijkstra", "propuesta"):
+                for rango, ruta in enumerate(tramo[metodo], start=1):
+                    ruta["id_bd"] = guardar_ruta(conn, metodo, rango, tramo["origen"], tramo["destino"],
+                                                ruta, salida["preferencias"])
+        dif = evaluacion["diferencial_C_vs_A"]
+        salida["id_evaluacion"] = conn.execute(
+            """INSERT INTO evaluaciones (origen, destino, n_escenarios, n_fallas, r_par_dijkstra, r_par_propuesta,
+                   r_mision_dijkstra, r_mision_replan, r_mision_propuesta, delta_r_pp, p_mcnemar, parametros)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (s, t, evaluacion["n_escenarios"], n_fallas, evaluacion["r_par"]["dijkstra"],
+             evaluacion["r_par"]["propuesta"], evaluacion["r_mision"]["A_dijkstra_fijo"],
+             evaluacion["r_mision"]["D_dijkstra_replan"], evaluacion["r_mision"]["C_propuesta"],
+             dif["delta_R_pp"], dif["p_mcnemar"],
+             Jsonb({"modo": "mision", "secuencia_mision": secuencia,
+                    "preferencias": salida["preferencias"], "origen_focos": origen_focos})),
+        ).fetchone()[0]
+        conn.commit()
+    return salida

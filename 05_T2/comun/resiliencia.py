@@ -1,13 +1,15 @@
 """Métrica de resiliencia de k = 2 rutas y diferencial entre métodos (rúbrica 10 y 11.2).
 
-Para un par (origen, destino) se generan N escenarios de fallas con semilla
+Para un par (origen, destino) o una secuencia de puntos obligatorios se generan N escenarios de fallas con semilla
 (ruteo.fallas.generar_escenario: discos con radio y aparición diferida).
 
-- R_par(método)  = fracción de escenarios en que al menos una de sus 2 rutas
-                   no toca ninguna falla (calidad del par precalculado).
-- R_mision(estr.) = fracción de escenarios en que el UAV llega al destino
-                   dentro del presupuesto (1 + beta) * L*, descubriendo las
-                   fallas en vuelo (ruteo.simulador). A = par Dijkstra fijo,
+- R_par(método)  = fracción de escenarios en que cada tramo conserva al menos
+                   una de sus 2 rutas precalculadas libre de fallas. En una
+                   consulta de un solo tramo coincide con la métrica original.
+- R_mision(estr.) = fracción de escenarios en que el UAV visita los puntos
+                   obligatorios en orden y llega al destino dentro del
+                   presupuesto (1 + beta) * L*, descubriendo fallas en vuelo.
+                   A = par Dijkstra fijo,
                    D = Dijkstra que replanifica (ablación), C = propuesta.
 - Diferencial:   Delta R = R(C) - R(A) en puntos porcentuales, con la prueba
                  exacta de McNemar (los escenarios son los mismos: pareada).
@@ -67,10 +69,24 @@ def _alguna_libre(par: list[Ruta | None], afectadas: frozenset[int]) -> bool:
 def evaluar(g: Grafo, s: int, t: int, prefs: Preferencias, viento: Viento | None,
             par_dijkstra: list[Ruta | None], par_propuesta: list[Ruta | None],
             focos: list[tuple[float, float]], n_escenarios: int = 100, n_fallas: int = 3,
-            prob_foco: float = 0.5) -> dict:
+            prob_foco: float = 0.5, *, secuencia: list[int] | None = None,
+            pares_dijkstra: list[list[Ruta | None]] | None = None,
+            pares_propuesta: list[list[Ruta | None]] | None = None) -> dict:
+    """Evalúa un tramo o la misión completa con los mismos escenarios para todos los métodos.
+
+    En una misión, R_par exige que cada tramo conserve al menos una alternativa libre.
+    R_mision ejecuta la secuencia completa de puntos obligatorios.
+    """
+    secuencia = [s, t] if secuencia is None else secuencia
+    pares_dijkstra = [par_dijkstra] if pares_dijkstra is None else pares_dijkstra
+    pares_propuesta = [par_propuesta] if pares_propuesta is None else pares_propuesta
+    if (len(secuencia) < 2 or secuencia[0] != s or secuencia[-1] != t
+            or len(pares_dijkstra) != len(secuencia) - 1
+            or len(pares_propuesta) != len(secuencia) - 1):
+        raise ValueError("La secuencia y los pares de rutas deben cubrir los mismos tramos de misión.")
     cfg = Configuracion(preferencias=prefs,
                         fallas=replace(ParametrosFallas(), n_fallas=n_fallas, prob_foco=prob_foco))
-    largo_min = largo_minimo_mision(g, [s, t], aristas_excluidas(g, prefs))
+    largo_min = largo_minimo_mision(g, secuencia, aristas_excluidas(g, prefs))
     if largo_min is None:
         return {"error": "No hay ruta admisible entre origen y destino."}
     presupuesto = (1 + prefs.presupuesto_extra) * largo_min
@@ -79,12 +95,12 @@ def evaluar(g: Grafo, s: int, t: int, prefs: Preferencias, viento: Viento | None
     libres_dij, libres_prop = [], []
     semillas = list(SEMILLAS["sitio"])[:n_escenarios]
     for semilla in semillas:
-        esc = generar_escenario(g, focos, cfg.fallas, largo_min, [s, t], semilla)
+        esc = generar_escenario(g, focos, cfg.fallas, largo_min, secuencia, semilla)
         afectadas = esc.todas_afectadas()
-        libres_dij.append(_alguna_libre(par_dijkstra, afectadas))
-        libres_prop.append(_alguna_libre(par_propuesta, afectadas))
+        libres_dij.append(all(_alguna_libre(par, afectadas) for par in pares_dijkstra))
+        libres_prop.append(all(_alguna_libre(par, afectadas) for par in pares_propuesta))
         for e in estrategias.values():
-            resultados[e.nombre].append(ejecutar_mision(g, cfg, [s, t], esc, e, presupuesto, viento))
+            resultados[e.nombre].append(ejecutar_mision(g, cfg, secuencia, esc, e, presupuesto, viento))
 
     nombre = {k: e.nombre for k, e in estrategias.items()}
     r_mision = {k: round(tasa([r.exito for r in resultados[nombre[k]]]), 4) for k in estrategias}
@@ -92,6 +108,7 @@ def evaluar(g: Grafo, s: int, t: int, prefs: Preferencias, viento: Viento | None
     pierde_par = sum(1 for p, d in zip(libres_prop, libres_dij) if d and not p)
     r_par_d, r_par_p = tasa(libres_dij), tasa(libres_prop)
     return {
+        "secuencia_mision": secuencia,
         "n_escenarios": len(semillas),
         "n_fallas": n_fallas,
         "prob_foco": prob_foco,

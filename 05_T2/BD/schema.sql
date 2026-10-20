@@ -185,7 +185,7 @@ CREATE TABLE evaluaciones (
     destino            integer NOT NULL REFERENCES nodos (id),
     n_escenarios       integer NOT NULL,
     n_fallas           integer NOT NULL,
-    r_par_dijkstra     double precision,           -- fracción de escenarios con alguna ruta del par libre
+    r_par_dijkstra     double precision,           -- consulta libre: par de rutas; misión: todos los tramos conservan ruta
     r_par_propuesta    double precision,
     r_mision_dijkstra  double precision,           -- estrategia A: par fijo + retroceso
     r_mision_replan    double precision,           -- estrategia D: Dijkstra que replanifica (ablación)

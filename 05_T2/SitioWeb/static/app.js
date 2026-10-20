@@ -30,7 +30,10 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; colaboradores de <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 }).addTo(mapa);
-const control = L.control.layers(null, null, { collapsed: false }).addTo(mapa);
+// Las rutas usan el panel vectorial normal; los puntos deben quedar encima.
+mapa.createPane('puntosMision').style.zIndex = 610;
+mapa.createPane('puntosSeleccionados').style.zIndex = 620;
+const control = L.control.layers(null, null, { collapsed: true }).addTo(mapa);
 
 function colorRiesgo(r) {
   const t = Math.max(0, Math.min(1, Number(r) || 0));
@@ -51,7 +54,7 @@ const CAPAS = {
   },
   mision: {
     nombre: 'Misión: inicio, puntos de observación, destino', visible: true,
-    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 7, color: '#111827', weight: 2, fillColor: '#fde047', fillOpacity: 1 }),
+    pointToLayer: (f, ll) => L.circleMarker(ll, { pane: 'puntosMision', radius: 8, color: '#111827', weight: 2, fillColor: '#fde047', fillOpacity: 1, bubblingMouseEvents: false }),
   },
   edificios: {
     nombre: 'Metadata: edificios OSM (gris oscuro = con altura)', perezosa: true,
@@ -76,10 +79,12 @@ const CAPAS = {
   },
 };
 
-const estado = { origen: null, destino: null, mision: null, defecto: null };
+const estado = { origen: null, destino: null, mision: null, defecto: null, modoMision: false };
+const capas = {};
 
 for (const [clave, def] of Object.entries(CAPAS)) {
   const grupo = L.layerGroup();
+  capas[clave] = grupo;
   control.addOverlay(grupo, def.nombre);
   if (def.visible) grupo.addTo(mapa);
   let cargada = false;
@@ -89,11 +94,17 @@ for (const [clave, def] of Object.entries(CAPAS)) {
     try {
       const geo = await pedir(`/api/capas/${clave}`);
       if (clave === 'mision') estado.mision = geo;
-      const opciones = { onEachFeature: (f, l) => l.bindPopup(popup(f.properties)) };
+      const opciones = { onEachFeature: (f, l) => {
+        l.bindPopup(popup(f.properties));
+        if (clave === 'mision') {
+          const p = f.properties;
+          const etiqueta = p.rol === 'inicio' ? 'A' : p.rol === 'destino' ? 'B' : `P${p.orden}`;
+          l.bindTooltip(etiqueta, { permanent: true, direction: 'top', offset: [0, -8], className: 'etiqueta-mision' });
+        }
+      } };
       if (def.style) opciones.style = def.style;
       if (def.pointToLayer) opciones.pointToLayer = def.pointToLayer;
       L.geoJSON(geo, opciones).addTo(grupo);
-      if (clave === 'mision') grupo.eachLayer((l) => l.bringToFront && l.bringToFront());
     } catch (e) {
       cargada = false;
       console.warn(`Capa ${clave}:`, e);
@@ -126,7 +137,7 @@ const marcadores = { origen: null, destino: null };
 function fijar(tipo, latlng) {
   estado[tipo] = { lat: latlng.lat, lon: latlng.lng };
   if (marcadores[tipo]) marcadores[tipo].remove();
-  marcadores[tipo] = L.circleMarker(latlng, { radius: 9, color: '#fff', weight: 2, fillColor: COLOR[tipo], fillOpacity: 1 })
+  marcadores[tipo] = L.circleMarker(latlng, { pane: 'puntosSeleccionados', radius: 9, color: '#fff', weight: 2, fillColor: COLOR[tipo], fillOpacity: 1 })
     .bindTooltip(tipo === 'origen' ? 'Origen' : 'Destino').addTo(mapa);
   $(`txt-${tipo}`).textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
 }
@@ -139,6 +150,8 @@ function quitar(tipo) {
 }
 
 mapa.on('click', (e) => {
+  estado.modoMision = false;
+  $('txt-modo').textContent = 'Consulta libre: se comparan rutas entre los dos puntos elegidos.';
   if (!estado.origen || estado.destino) {
     quitar('destino');
     fijar('origen', e.latlng);
@@ -147,7 +160,11 @@ mapa.on('click', (e) => {
   }
 });
 
-$('btn-limpiar').addEventListener('click', () => { quitar('origen'); quitar('destino'); capaCalculadas.clearLayers(); });
+$('btn-limpiar').addEventListener('click', () => {
+  estado.modoMision = false;
+  $('txt-modo').textContent = 'Consulta libre: se comparan rutas entre los dos puntos elegidos.';
+  quitar('origen'); quitar('destino'); capaCalculadas.clearLayers();
+});
 
 $('btn-mision').addEventListener('click', async () => {
   try {
@@ -157,6 +174,9 @@ $('btn-mision').addEventListener('click', async () => {
     const ll = (f) => L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]);
     fijar('origen', ll(puntos[0]));
     fijar('destino', ll(puntos[puntos.length - 1]));
+    if (!mapa.hasLayer(capas.mision)) capas.mision.addTo(mapa);
+    estado.modoMision = true;
+    $('txt-modo').textContent = `Misión completa: ${puntos.length - 1} tramos obligatorios en orden. Al calcular se visitan todos los puntos amarillos.`;
   } catch (e) {
     mostrarEstado(`No se pudo leer la misión: ${e.message}`, true);
   }
@@ -205,15 +225,23 @@ function mostrarEstado(texto, error = false) {
 
 function dibujarRutas(grupo, res, ajustar) {
   grupo.clearLayers();
+  if (res.modo === 'mision' && !mapa.hasLayer(capas.mision)) capas.mision.addTo(mapa);
   const lineas = [];
-  const dibujar = (rutas, color, metodo) => (rutas || []).forEach((r, i) => {
+  const dibujar = (rutas, color, metodo, tramo = '') => (rutas || []).forEach((r, i) => {
     const linea = L.polyline(r.coordenadas, { color, weight: i === 0 ? 5 : 4, opacity: 0.9, dashArray: i === 0 ? null : '8 6' })
-      .bindTooltip(`${metodo}, ruta ${i + 1}: ${num(r.largo_km)} km`);
+      .bindTooltip(`${metodo}${tramo ? `, ${tramo}` : ''}, ruta ${i + 1}: ${num(r.largo_km)} km`);
     linea.addTo(grupo);
     lineas.push(linea);
   });
-  dibujar(res.dijkstra, COLOR.dijkstra, 'Dijkstra');
-  dibujar(res.propuesta, COLOR.propuesta, 'Propuesta');
+  if (res.modo === 'mision') {
+    (res.tramos || []).forEach((tr) => {
+      dibujar(tr.dijkstra, COLOR.dijkstra, 'Dijkstra', tr.etiqueta);
+      dibujar(tr.propuesta, COLOR.propuesta, 'Propuesta', tr.etiqueta);
+    });
+  } else {
+    dibujar(res.dijkstra, COLOR.dijkstra, 'Dijkstra');
+    dibujar(res.propuesta, COLOR.propuesta, 'Propuesta');
+  }
   if (ajustar && lineas.length) mapa.fitBounds(L.featureGroup(lineas).getBounds(), { padding: [30, 30] });
 }
 
@@ -222,7 +250,40 @@ function filaRuta(clase, i, metodo, r) {
     + `<td>${num(r.largo_km)}</td><td>${num(r.costo)}</td><td>${num(r.riesgo_medio, 3)}</td></tr>`;
 }
 
+function mostrarResultadoMision(res, titulo) {
+  const ev = res.resiliencia || {};
+  const rPar = ev.r_par || {};
+  const rMis = ev.r_mision || {};
+  const dCA = ev.diferencial_C_vs_A || {};
+  const dCD = ev.diferencial_C_vs_D || {};
+  const filas = (res.tramos || []).flatMap((tr) => [
+    ...(tr.dijkstra || []).map((r, i) => `<tr><td>${esc(tr.etiqueta)}</td><td>Dijkstra ${i + 1}</td><td>${num(r.largo_km)}</td></tr>`),
+    ...(tr.propuesta || []).map((r, i) => `<tr><td>${esc(tr.etiqueta)}</td><td>Propuesta ${i + 1}</td><td>${num(r.largo_km)}</td></tr>`),
+  ]);
+  const avisos = (res.advertencias || []).map((a) => `<div class="aviso">${esc(a)}</div>`).join('');
+  $('contenido-resultado').innerHTML = `
+    <h3>${esc(titulo)}</h3>
+    <p class="ayuda">Secuencia de nodos: ${(res.secuencia_mision || []).map(esc).join(' → ')}.
+      Se calculan rutas para cada tramo consecutivo; la misión completa exige pasar por todos los puntos de observación.</p>
+    ${avisos}
+    <table><thead><tr><th>Tramo</th><th>Ruta</th><th>km</th></tr></thead><tbody>${filas.join('')}</tbody></table>
+    <h3>Resiliencia de la misión completa</h3>
+    <table><thead><tr><th>Métrica</th><th>Dijkstra</th><th>Propuesta</th><th>Δ pp</th></tr></thead>
+      <tbody>
+        <tr><td>R_par: cada tramo conserva alguna ruta libre</td><td>${pct(rPar.dijkstra)}</td><td>${pct(rPar.propuesta)}</td><td>${num(ev.delta_r_par_pp, 1)}</td></tr>
+        <tr><td>R_misión: visita observaciones y llega a B</td><td>${pct(rMis.A_dijkstra_fijo)}</td><td>${pct(rMis.C_propuesta)}</td><td>${num(dCA.delta_R_pp, 1)}</td></tr>
+        <tr><td>Control D: Dijkstra con replanificación</td><td>${pct(rMis.D_dijkstra_replan)}</td><td></td><td>${num(dCD.delta_R_pp, 1)} (C−D)</td></tr>
+      </tbody></table>
+    <p class="ayuda">${esc(ev.n_escenarios ?? '—')} escenarios, ${esc(ev.n_fallas ?? '—')} fallas por escenario.
+      Presupuesto total: ${num(ev.presupuesto_km)} km; longitud mínima sin fallas: ${num(ev.largo_minimo_km)} km.
+      Focos: ${esc(ev.origen_focos)} (${esc(ev.n_focos ?? 0)}).</p>`;
+}
+
 function mostrarResultado(res, titulo) {
+  if (res.modo === 'mision') {
+    mostrarResultadoMision(res, titulo);
+    return;
+  }
   const ev = res.resiliencia || {};
   const rPar = ev.r_par || {};
   const rMis = ev.r_mision || {};
@@ -277,6 +338,7 @@ $('form-prefs').addEventListener('submit', async (ev) => {
   const cuerpo = {
     origen: estado.origen,
     destino: estado.destino,
+    usar_mision: estado.modoMision,
     preferencias: leerPreferencias(),
     n_fallas: Number(f.elements.n_fallas.value) || 3,
     n_escenarios: Number(f.elements.n_escenarios.value) || 100,
@@ -288,8 +350,9 @@ $('form-prefs').addEventListener('submit', async (ev) => {
     const res = await pedir('/api/rutas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
     });
+    mapa.removeLayer(capaEjemplo);
     dibujarRutas(capaCalculadas, res, true);
-    mostrarResultado(res, 'Rutas calculadas');
+    mostrarResultado(res, estado.modoMision ? 'Misión completa calculada por tramos' : 'Rutas calculadas entre dos nodos');
     mostrarEstado(res.id_evaluacion ? `Guardado en la BD (evaluación ${res.id_evaluacion}).` : 'Listo.');
   } catch (e) {
     mostrarEstado(`Error: ${e.message}`, true);
@@ -313,9 +376,13 @@ $('form-prefs').addEventListener('submit', async (ev) => {
   }
   try {
     const ej = await pedir('/api/ejemplo');
-    dibujarRutas(capaEjemplo, ej, false);
-    mostrarResultado(ej, 'Ejemplo: inicio → destino de la misión, preferencias por defecto');
-    mostrarEstado('Se muestra el ejemplo generado con pgr_dijkstra y pgr_KSP. Elige otro origen y destino para calcular.');
+    if (ej.modo === 'mision') {
+      dibujarRutas(capaEjemplo, ej, false);
+      mostrarResultado(ej, 'Ejemplo: misión completa, preferencias por defecto');
+      mostrarEstado('Se muestra la misión completa por tramos. Elige otros puntos para una consulta libre.');
+    } else {
+      mostrarEstado('El ejemplo guardado solo compara inicio y destino. Usa la misión y calcula para incluir los puntos de observación.');
+    }
   } catch (e) {
     mostrarEstado(`Sin rutas de ejemplo todavía (${e.message}). Elige origen y destino para calcular.`);
   }
