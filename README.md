@@ -1,41 +1,58 @@
 # Ruteo resiliente de UAV para reconocimiento de una zona
 
-Repositorio académico del grupo 7. Aquí están los antecedentes, el código de validación geoespacial y el planteamiento que surgió tras la conversación con el profesor. **La Tarea 2 todavía está en fase de diseño:** no se ha implementado ni validado un algoritmo de trayectorias resilientes.
+Repositorio académico del grupo 7. La Tarea 2 está **implementada y en ejecución**: una flota de UAV simulados recorre un grafo geolocalizado de Mykolaiv y, cuando uno detecta interferencia, avisa al resto —el aviso se retransmite de UAV en UAV, como en CLUN-LSR— y los demás cambian su ruta en pleno vuelo. Lo que falta es la corrida de evaluación con las semillas reservadas; los resultados publicados son del conjunto de ajuste.
 
 ## Lectura recomendada
 
-1. [Contexto para el grupo](01_PROYECTO_ACTUAL/CONTEXTO_PARA_EL_GRUPO_TAREA_2.md): qué se hizo, qué se observó en la corrección y cómo se propone avanzar.
-2. [Enfoque tras la reunión](01_PROYECTO_ACTUAL/ENFOQUE_TRAS_CHARLA_PROFESOR.md): interpretación de las orientaciones del profesor y decisiones abiertas.
-3. [Resumen técnico](01_PROYECTO_ACTUAL/RESUMEN_PROYECTO_Y_TAREA_2.md): resultados de la Tarea 1, evidencia, límites y contraste con la Tarea 2.
-4. [Enunciado y rúbrica de la Tarea 2](01_PROYECTO_ACTUAL/ENUNCIADO_Y_RUBRICA_TAREA_2.txt): copia del texto facilitado al grupo.
+1. [05_T2/README.md](05_T2/README.md): cómo correr todo y qué documento leer según lo que se busque.
+2. [Entrega de la Tarea 2](05_T2/ENTREGA_TAREA2.md): cada criterio de la rúbrica con el archivo y la evidencia que lo respalda.
+3. [Propuesta técnica](05_T2/PROPUESTA_TECNICA.md): fallas, pesos, restricciones, algoritmo, métricas y la flota con aviso compartido (§10).
+4. [Informe de la Tarea 2](05_T2/Informe_Tarea_2_Ruteo_Resiliente_UAV.tex): borrador en LaTeX, formato IEEEtran.
+5. [Enunciado y rúbrica de la Tarea 2](01_PROYECTO_ACTUAL/ENUNCIADO_Y_RUBRICA_TAREA_2.txt): copia del texto facilitado al grupo.
 
 ## Estructura
 
 | Ruta | Contenido |
 |---|---|
-| [01_PROYECTO_ACTUAL/](01_PROYECTO_ACTUAL/) | Documentos vigentes para decidir y formular la Tarea 2. |
+| [01_PROYECTO_ACTUAL/](01_PROYECTO_ACTUAL/) | Enunciado, rúbrica y los documentos con que se reformuló la Tarea 2 tras la reunión. |
 | [02_REUNION_PROFESOR/](02_REUNION_PROFESOR/) | Transcripción de la reunión y guion anterior a ella. La grabación queda solo en el equipo local. |
 | [03_TAREA_1/](03_TAREA_1/README.md) | Informe entregado, fuente LaTeX, referencia chilena sobre jamming y pruebas iniciales. Es material histórico. |
 | [04_VALIDACION_TAREA_1/](04_VALIDACION_TAREA_1/REPRODUCIBILIDAD_Y_DATOS.md) | Scripts, SQL, Docker, resultados resumidos y guía para reproducir la validación de fuentes. |
-| [05_T2/](05_T2/README.md) | **Propuesta vigente:** ruteo físico resiliente (Mykolaiv). Núcleo Python con Dijkstra, Yen, selección resiliente, replanificación, simulador de fallas y métricas; mapa del repo y propuesta técnica. |
+| [05_T2/](05_T2/README.md) | **Entrega vigente:** ruteo físico resiliente y flota con aviso compartido. Pipeline Docker, base PostGIS/pgRouting, núcleo Python, experimentos, sitio Leaflet e informe. |
 
-La Tarea 1 tomó como base **CLUN-LSR**, que recupera caminos de comunicación entre UAV. El enfoque actual usa la pérdida de reporte como señal para **replanificar una trayectoria física de reconocimiento**. Son problemas relacionados, pero sus grafos, algoritmos y métricas no son equivalentes; esta distinción se desarrolla en los documentos de `01_PROYECTO_ACTUAL/`.
+La Tarea 1 tomó como base **CLUN-LSR**, que recupera caminos de comunicación entre UAV. La Tarea 2 cambia el objeto de optimización —ahora el grafo son lugares y tramos de vuelo, no enlaces de radio— y conserva de CLUN-LSR solo **su efecto**: que el aviso de interferencia llegue por multisalto y los demás UAV replanifiquen. No se simula el protocolo (capas, espectro, MP-OLSR). La distinción se desarrolla en [CONTEXTO_PROPUESTA…](05_T2/CONTEXTO_PROPUESTA_RUTEO_RESILIENTE_UAV_TAREA2.md).
 
 ## Estado técnico
 
 | Componente | Estado verificable en este repositorio |
 |---|---|
-| Consultas a fuentes geoespaciales y meteorológicas | Scripts y evidencia de ejecuciones anteriores. Algunas fuentes requieren credenciales y pueden cambiar sus respuestas. |
-| PostgreSQL/PostGIS | `docker-compose.yml`, SQL y scripts de carga/consulta de cuatro capas. |
-| Grafo físico de puntos y tramos, pgRouting y rutas `pgr_dijkstra` | Pendiente para la Tarea 2. |
-| Algoritmo resiliente, comparación de rutas y métrica de cobertura | Pendiente para la Tarea 2. |
-| Sitio Leaflet y ejecución integral desde un `main` raíz | Pendiente para la Tarea 2. |
+| Consultas a fuentes geoespaciales y meteorológicas | Seis fuentes implementadas con cargador y documento de estructura por cada JSON (`05_T2/Metadata/`, `05_T2/Amenazas/`). |
+| PostgreSQL/PostGIS/pgRouting | `docker-compose.yml`, `05_T2/BD/schema.sql`, diagrama generado y pipeline completo que corre en contenedores. |
+| Grafo físico de puntos y tramos, rutas `pgr_dijkstra` y `pgr_KSP` | Implementado: malla de 196 nodos y 618 aristas, dos rutas por método en `05_T2/comun/rutas.py` y `BD/rutas_ejemplo.py`. |
+| Algoritmo resiliente, comparación de rutas y métricas | Implementado: Yen + selección por `J(p,q)` + replanificación (`05_T2/ruteo/`), con `R_par`, `R_mision` y McNemar pareado. |
+| **Flota reactiva con aviso compartido** | Implementado: `05_T2/ruteo/flota.py`, animación en el sitio y barrido en `05_T2/resultados/`. |
+| Sitio Leaflet y ejecución integral desde un `main` raíz | Implementado: `python main.py` levanta BD, pipeline y sitio en http://localhost:8000. |
+| Corrida de evaluación con semillas reservadas | **Pendiente.** Todo lo publicado usa las semillas 0–99 del conjunto de ajuste. |
+| Calidad de la metadata | **Desigual.** Los edificios OSM deciden 79 de las 83 exclusiones, pero GPSJam no discrimina, el viento nunca restringe y las zonas restringidas no tienen fuente. Auditoría en [PROPUESTA_TECNICA §11.1](05_T2/PROPUESTA_TECNICA.md). |
 
-La existencia de datos y consultas PostGIS **no demuestra** que el algoritmo de ruteo funcione. Los conteos del informe son resultados de consultas puntuales y no tasas de incidencia de jamming.
+La existencia de datos y consultas PostGIS **no demuestra** que el algoritmo de ruteo funcione, y los resultados del simulador son de escenarios sintéticos: discos de interferencia con radio y momento de activación supuestos. Los conteos de las fuentes son registros extraídos, no tasas de incidencia de jamming.
 
-## Reproducir la validación disponible
+## Ejecutar la Tarea 2
 
-La guía completa está en [Datos y reproducción](04_VALIDACION_TAREA_1/REPRODUCIBILIDAD_Y_DATOS.md). Como punto de partida:
+Requiere Docker con Compose v2. Desde la raíz del repositorio:
+
+```bash
+python main.py                  # BD + descarga + carga + pesos + rutas + diagrama + sitio
+python main.py --sin-descarga   # reutiliza los JSON ya generados, sin llamar a las APIs
+python main.py --pruebas        # 36 pruebas unitarias en el contenedor
+python main.py --detener
+```
+
+El sitio queda en **http://localhost:8000**: se elige origen y destino sobre el mapa, se ajustan las preferencias y la sección "Flota con aviso" anima el mismo escenario con aviso y sin aviso. Los puntos de observación de la misión se pueden mover, quitar y añadir desde esa misma sección. Los experimentos se reproducen con `experimentos/run_experimentos.py` y `experimentos/run_flota.py` desde `05_T2/`.
+
+## Reproducir la validación de la Tarea 1
+
+Es material histórico y usa su propio entorno. La guía completa está en [Datos y reproducción](04_VALIDACION_TAREA_1/REPRODUCIBILIDAD_Y_DATOS.md):
 
 ```bash
 cd 04_VALIDACION_TAREA_1/validacion_ruteo

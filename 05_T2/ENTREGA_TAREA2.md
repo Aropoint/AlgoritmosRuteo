@@ -44,7 +44,7 @@ La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guí
 | 8 | k ≥ 2 rutas solo con `pgr_dijkstra` por km | 4 | `comun/rutas.py` (`dijkstra_dos_rutas_pgr`), `BD/rutas_ejemplo.py` | Mapa con las 2 rutas azules del ejemplo y la consulta SQL |
 | 9 | k ≥ 2 rutas con el algoritmo propuesto | 4 | `comun/rutas.py` (`ksp_pgr`, `propuesta_pgr`) | Mapa con las 2 rutas naranjas |
 | 10 | Métrica de resiliencia de k rutas | 6 | `comun/resiliencia.py`, `ruteo/metricas.py` | `R_par` (alguna ruta del par queda libre) y `R_mision` (llega dentro del presupuesto) sobre N escenarios. Para la flota, `R_seguidores` (PROPUESTA_TECNICA §10) |
-| 11.1 | Plataforma: (inicio, objetivo) + restricciones → mapa con el par | 4 | `SitioWeb/app.py`, `SitioWeb/static/` | Demostración: clic en origen y destino, cambio de una preferencia, "Calcular rutas". Después, la sección 4 "Flota con aviso": reproducir el escenario y cambiar entre con aviso y sin aviso |
+| 11.1 | Plataforma: (inicio, objetivo) + restricciones → mapa con el par | 4 | `SitioWeb/app.py`, `SitioWeb/static/` | Demostración: clic en origen y destino, cambio de una preferencia, "Calcular rutas". Después, la sección 4 "Flota con aviso": mover o añadir un punto de observación, reproducir el escenario y cambiar entre con aviso y sin aviso |
 | 11.2 | Diferencial de resiliencia | 2 | Panel de resultados del sitio, tabla `evaluaciones`, panel de la flota | ΔR = R(C) − R(A) en pp, con el p de McNemar. Mostrar también C − D (ablación) y, en la flota, D_A − D (valor del aviso) y C_A − D_A |
 
 ## Flota con aviso compartido (idea del profesor y base en CLUN-LSR)
@@ -77,7 +77,8 @@ No es un criterio aparte de la rúbrica, pero responde la observación de la reu
 ## Advertencias que conviene decir en la presentación
 
 - La malla es **sintética** y geolocalizada. No representa corredores aéreos reales ni es un plan de vuelo.
-- GPSJam mide **aviones en altura**. Sobre zonas de guerra sin tráfico civil suele no haber datos, y eso es ausencia de dato, no de interferencia.
+- GPSJam mide **aviones en altura**. Sobre zonas de guerra sin tráfico civil suele no haber datos, y eso es ausencia de dato, no de interferencia. Y en nuestro AOI **no discrimina**: toda el área cabe en una celda H3 de ~1 775 km², así que los 618 tramos reciben el mismo `0,3333`. Si preguntan por el riesgo medio de 0,45, hay que decir que esa constante es la que lo infla (PROPUESTA_TECNICA §11.1).
+- **Si preguntan por las zonas restringidas:** la preferencia existe en el sitio y el simulador la evalúa, pero ninguna fuente la activa; hoy `en_zona_restringida` es `false` en los 618 tramos. Es lo primero de la lista de mejoras.
 - El modelo de jamming del simulador es **abstracto**: discos con radio, momento de activación y focos. No se modelan sistemas reales.
 - **La comparación honesta incluye la ablación D.** Con los datos de ajuste, C supera a A, pero no a D (PROPUESTA_TECNICA §9).
 - **El aviso de la flota sirve cuando la interferencia no se nota antes de entrar.** Con detección perfecta en el borde, cada UAV esquiva solo y el aviso únicamente ahorra km (PROPUESTA_TECNICA §10). La probabilidad de detección es un supuesto, por eso se muestra el barrido.

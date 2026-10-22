@@ -31,7 +31,9 @@ Una falla `f = (c, r, t_on)` es un **disco** de centro `c` y radio `r ~ U[0,25; 
 - **Descubrimiento local.** El UAV no conoce las fallas. Al llegar a un nodo observa el estado de sus tramos incidentes. No hay falsos positivos: lo que observa bloqueado lo está.
 - **Origen espacial.** Con probabilidad `prob_foco` la falla se ubica cerca de un *foco de amenaza*, con una gaussiana `σ = 0,5 km`; en caso contrario, se ubica de forma uniforme en el AOI. Con datos reales (sitio web y `BD/rutas_ejemplo.py`), los focos son los **incendios de guerra del período de evaluación** (posteriores a `FECHA_CORTE`; `Amenazas/incendios_guerra.py`). Si no hay, se usan los históricos, luego los eventos UCDP y, como último recurso, focos sintéticos (`comun/resiliencia.py`). La búsqueda de focos usa la ventana **AOI + `BUFFER_KM`**, la misma con que `Amenazas/` filtró sus descargas: una falla centrada justo fuera del AOI igual alcanza tramos de la malla.
 
-  > **Corregido el 19-oct-2026.** `focos_bd` buscaba en el AOI estricto mientras las descargas usaban el AOI + 5 km. En la primera corrida completa los 15 incendios del período de evaluación cayeron todos en el anillo del buffer, la consulta devolvió vacío y la evaluación terminó usando 3 incendios **históricos** — los mismos que fijaron `r_incendios`, rompiendo la independencia que exige el punto siguiente. Detalle y verificación en [README.md](README.md). Las cifras obtenidas antes del arreglo deben regenerarse.
+  > **Corregido el 19-oct-2026.** `focos_bd` buscaba en el AOI estricto mientras las descargas usaban el AOI + 5 km. En la primera corrida completa los 15 incendios del período de evaluación cayeron todos en el anillo del buffer, la consulta devolvió vacío y la evaluación terminó usando 3 incendios **históricos** — los mismos que fijaron `r_incendios`, rompiendo la independencia que exige el punto siguiente. Detalle y verificación en [README.md](README.md). Las cifras se regeneraron y se verificaron el 22-oct-2026.
+
+  > **Pendiente, detectado el 22-oct-2026.** El arreglo anterior dejó un efecto que no estaba previsto. Los 15 incendios de evaluación están **todos fuera de la caja de la malla** (de 1,95 a 5,12 km de la red; la caja mide 6,62 × 6,62 km), y `muestrear_cerca_de_focos` recorta la muestra gaussiana a esa caja. Medido sobre 200 escenarios de la ruta BD/web: **el 100 % de las 315 fallas con origen `foco` queda con el centro pegado al borde de la caja**. Es decir, con estos datos las fallas "cerca de un foco" no se siembran cerca de un incendio sino en el borde del área, sistemáticamente lejos del interior donde transcurre la misión. No afecta a los resultados publicados en `resultados/`, que usan `generar_focos` sintéticos dentro de la caja. Arreglo propuesto: descartar el foco que cae fuera de la caja y volver a sortear, o muestrear en AOI + buffer y conservar solo los discos que tocan algún tramo.
 - **Independencia.** Los **eventos históricos** que alimentan los pesos (§3) y las **fallas de evaluación** son muestras independientes del mismo proceso espacial; con datos reales corresponderían a períodos distintos. Con `prob_foco = 0` el riesgo histórico no aporta información, lo que permite comprobar si el método depende de que esa información sea buena.
 - **Puntos obligatorios.** Un disco que contiene un punto de la misión se vuelve a muestrear (queda registrado en `fallas_remuestreadas`), porque haría la misión imposible para cualquier método y no ayudaría a distinguirlos.
 - **Tres niveles separados**, como pide el contexto: registro externo → interpretación (foco) → falla simulada reproducible (semilla).
@@ -261,6 +263,28 @@ Demora media del aviso:
 
 ## 11. Limitaciones
 
+### 11.1. Cuánto trabaja de verdad cada fuente (auditoría del 22-oct-2026)
+
+Medido sobre la base cargada: 196 nodos, 618 aristas, 83 tramos excluidos por las restricciones.
+
+| Fuente | ¿Discrimina entre tramos? | Evidencia |
+|---|---|---|
+| Edificios OSM | **Sí, decisivo** | 79 de las 83 exclusiones necesitan la altura del edificio; solo 4 se excluyen por relieve solo |
+| Elevación | Sí, pero poco sola | Desnivel total de 57 m; 3 muestras por arista con DEM de 90 m |
+| Viento | **Nunca restringe** | Mediana a altura de vuelo 6,43 m/s contra un umbral de 12. Solo inclina el costo direccional |
+| UCDP | **Sí, bien** | 328 tramos con `r_eventos > 0,01` y 316 valores distintos; 64 de 65 eventos dentro del AOI |
+| Incendios | Poco | 79 tramos; de los 26 históricos solo **7** están a menos de 1,5 km (el corte 3σ) |
+| GPSJam | **No discrimina** | Un único valor, `0,3333`, en los 618 tramos |
+
+Cuatro consecuencias que conviene declarar antes de presentar:
+
+- **GPSJam no aporta información y sube el riesgo medio de ~0,17 a 0,4511.** Las celdas H3 miden ~1 775 km² y el AOI son ~44 km²: el área entera cabe en una sola celda, así que todos los puntos medios reciben el mismo valor. Como entra en `1 − ∏(1 − rᵢ)`, que es monótona, **no cambia el orden de riesgo de ningún tramo**: solo desplaza y comprime la escala. De las 7 celdas cargadas, 6 no tocan ningún tramo, y la que sí lo cubre tiene datos de 6 de 30 días.
+- **`en_zona_restringida` es `false` en los 618 tramos.** La columna existe (`schema.sql`), el simulador la evalúa (`pesos.py`) y el sitio expone la casilla en las preferencias, pero **ninguna fuente la activa**. Es una restricción declarada y no implementada; afecta al criterio 6.1.
+- **La restricción de viento compara la mediana**, de modo que por construcción casi nunca se activa. La ráfaga máxima de la ventana (19,1 m/s a 10 m) sí supera el umbral.
+- **Solo 1 022 de 33 593 edificios tienen altura** (278 por `height`, 803 por `building:levels`). Como un dato ausente no bloquea, los otros 32 571 se tratan de hecho como de altura 0.
+
+### 11.2. Límites del modelo
+
 - Grafo, focos, eventos y fallas son **sintéticos**; con datos reales cambia la distribución espacial y los resultados pueden cambiar.
 - Modelo 2,5D: sin altura de vuelo variable, sin energía ni tiempo, y el viento es uniforme en el AOI.
 - Simulador de un UAV: conocimiento solo local y fallas permanentes (las transitorias están modeladas pero no se evaluaron).
@@ -270,6 +294,8 @@ Demora media del aviso:
 ## 12. Próximos pasos (ordenados por dependencia)
 
 1. **Grupo:** acordar si se congelan la v2 (un UAV) y la flota con sus valores por defecto (4 UAV, `p_det = 0,5`, 3 fallas). Después, correr **una sola vez** `run_experimentos.py --conjunto evaluacion` y `run_flota.py --conjunto evaluacion`.
-2. Regenerar `BD/rutas_ejemplo.py` tras el arreglo de los focos (ver README) y probar en Docker la sección "Flota con aviso" del sitio (`POST /api/flota`). Fuera de Docker solo se probó con datos sintéticos.
-3. Comparar las rutas de pgRouting con las de Python (`ruteo/algoritmos.py`) sobre el mismo grafo. Pueden diferir solo en empates.
-4. Generalización: repetir la comparación de la flota en otras mallas y misiones (otras semillas de `ParametrosMalla`).
+2. **Metadata (§11.1), por orden de rendimiento:** cargar una fuente de **zonas restringidas** (`aeroway`, `landuse=military` en la misma consulta Overpass) para que la preferencia deje de ser inerte; decidir qué hacer con **GPSJam**, que hoy solo infla la cifra de riesgo —sacarlo del producto y reportarlo como constante regional es lo más honesto—; y evaluar si la restricción de **viento** debe usar p95 o ráfaga en vez de la mediana.
+3. Arreglar el recorte de los **focos** fuera de la caja de la malla (§2), que hoy pega al borde el 100 % de las fallas con origen `foco` en la ruta BD/web.
+4. Comparar las rutas de pgRouting con las de Python (`ruteo/algoritmos.py`) sobre el mismo grafo. Pueden diferir solo en empates.
+5. Generalización: repetir la comparación de la flota en otras mallas y misiones (otras semillas de `ParametrosMalla`).
+6. **Trabajo futuro que pidió el profesor y no está:** contexto de defensa antiaérea (*"misiles tierra-aire que han destruido drones"*). No hay fuente pública adecuada; conviene declararlo en vez de omitirlo.

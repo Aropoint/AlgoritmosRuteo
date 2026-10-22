@@ -10,6 +10,10 @@ Nueva propuesta de la Tarea 2. Un UAV simulado recorre puntos de inspección sob
 
 En el sitio se puede animar un escenario con aviso y sin aviso.
 
+**Misión editable en el sitio** (22-oct-2026): la flota **siempre** recorre los puntos de observación. Marcar origen y destino cambia de dónde sale y a dónde llega, no la inspección. Los puntos amarillos se arrastran para moverlos, se pulsan para quitarlos y se añaden con "Añadir punto" (hasta 8). Si la secuencia difiere de la misión de la base de datos, el panel de resultados lo advierte, porque esas cifras **no** son comparables con las del informe.
+
+> **Corregido.** Hasta esa fecha, marcar origen y destino —o pulsar "Usar la misión", que tomaba solo el primer y el último punto— hacía que la flota simulara un vuelo directo entre dos nodos y se saltara los tres puntos de observación.
+
 | Documento | Para qué |
 |---|---|
 | [ENTREGA_TAREA2.md](ENTREGA_TAREA2.md) | **Cada criterio de la rúbrica → archivo y evidencia.** Guía para la presentación. |
@@ -95,11 +99,12 @@ Ninguna de las seis fuentes externas pide credenciales.
 
 | Hecho | Pendiente |
 |---|---|
-| Núcleo, simulador, métricas y experimento con ablaciones (conjunto de ajuste), con pruebas | **Regenerar rutas y evaluación** tras el arreglo de los focos (ver el hallazgo más abajo) |
-| Docker, `schema.sql`, cargadores, pesos en SQL, `pgr_dijkstra` / `pgr_KSP`, diagrama, sitio Leaflet y `main.py` | Corrida única sobre el conjunto de evaluación (decisión del grupo) |
-| ETL de 3 metadata y 3 amenazas con su documento de estructura | Presentación (guía en ENTREGA_TAREA2.md) y subida a GitLab UDP |
-| **Primera ejecución completa con Docker** (`python main.py`, 19-oct-2026): los 18 pasos en `ok` y las seis fuentes externas respondieron | |
-| **Flota con aviso** (20-oct-2026): simulador, experimento de ajuste, pruebas (36/36 OK) y sección del sitio | Probar `POST /api/flota` y la animación dentro de Docker. Fuera de Docker solo se probaron con datos sintéticos |
+| Núcleo, simulador, métricas y experimento con ablaciones (conjunto de ajuste), con pruebas | Corrida única sobre el conjunto de evaluación (decisión del grupo) |
+| Docker, `schema.sql`, cargadores, pesos en SQL, `pgr_dijkstra` / `pgr_KSP`, diagrama, sitio Leaflet y `main.py` | Mejorar la metadata floja: zonas restringidas, GPSJam y viento (PROPUESTA_TECNICA §11.1) |
+| ETL de 3 metadata y 3 amenazas con su documento de estructura | Arreglar el recorte de los focos al borde de la malla (PROPUESTA_TECNICA §2) |
+| **Rutas de ejemplo regeneradas y verificadas** tras el arreglo de los focos (22-oct-2026) | Presentación (guía en ENTREGA_TAREA2.md) y subida a GitLab UDP |
+| **Flota con aviso** (20-oct-2026): simulador, experimento de ajuste, pruebas (36/36 OK) y sección del sitio | |
+| **Verificado en Docker** (22-oct-2026): `python main.py --sin-descarga` con los 18 pasos en `ok`, `POST /api/flota` y `POST /api/rutas` respondiendo, y las seis capas del mapa | |
 
 **Resultado preliminar de la flota** (ajuste, 4 UAV, 3 fallas, `p_det = 0,5`): con el aviso compartido, los UAV que vienen detrás completan **+10 pp** más misiones con Dijkstra (D_A frente a D: 30 escenario-UAV ganados y 0 perdidos) y **+16 pp** con la propuesta (C_A frente a D). Si la interferencia siempre se nota antes de entrar (`p_det = 1`), el aviso casi no cambia la tasa. Detalle en PROPUESTA_TECNICA §10.
 
