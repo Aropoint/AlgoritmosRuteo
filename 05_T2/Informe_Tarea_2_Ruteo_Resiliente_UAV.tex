@@ -1,0 +1,853 @@
+% Borrador estructurado para la Tarea 2. Compilar desde 05_T2/ para resolver
+% las figuras relativas. Actualizado el 22 de octubre de 2026: incorpora la
+% flota con aviso compartido (seccion VI) y el ejemplo de base de datos
+% regenerado tras corregir la ventana de focos. Falta la corrida del conjunto
+% reservado de evaluacion.
+\documentclass[journal,10pt]{IEEEtran}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,tabularx,array}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{url}
+\graphicspath{{BD/}}
+
+\lstdefinestyle{codigo}{
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  showstringspaces=false,
+  backgroundcolor=\color{gray!6}
+}
+\lstset{style=codigo}
+
+\begin{document}
+
+\title{Ruteo físico resiliente de UAV para inspección territorial simulada: estudio geoespacial de referencia en Mykolaiv}
+\author{Aaron Pozas Oyarce, Diego Pérez Carrasco y Alex Marambio Leyton}
+\maketitle
+
+\begin{abstract}
+Se implementa y evalúa un mecanismo de ruteo físico resiliente para una misión
+\emph{simulada} de inspección de puntos en un recorte urbano de Mykolaiv,
+Ucrania. Un único grafo geolocalizado representa lugares de navegación y
+segmentos candidatos de vuelo, no enlaces entre UAV. El método genera rutas
+mediante Yen, selecciona un par por longitud, riesgo contextual y separación
+espacial, y recalcula el trayecto al descubrir un bloqueo simulado. Se
+contrasta con rutas basadas en Dijkstra; \texttt{pgr\_dijkstra} y
+\texttt{pgr\_KSP} también se usan en el ejemplo de base de datos.
+OpenStreetMap, elevación y meteorología histórica alimentan atributos del
+entorno; GPSJam, focos térmicos clasificados y eventos UCDP son indicadores
+contextuales, no mediciones de tramos intransitables. En 100 escenarios
+sintéticos del
+conjunto de ajuste con cinco fallas, la propuesta completó el 97\% de las
+misiones frente al 87\% de una línea base Dijkstra de par fijo. Dijkstra con
+replanificación completó el 96\%; por tanto, con un solo vehículo la ventaja
+específica de la selección resiliente no queda demostrada. Se extiende después
+el experimento a una \emph{flota reactiva} de tres a cinco UAV que comparten un
+aviso de interferencia: el que la detecta lo difunde y el aviso se retransmite
+por multisalto entre vehículos, mientras que el que queda dentro de la zona deja
+de emitir su \emph{beacon} y su silencio también alerta a la flota; quien recibe
+el aviso replanifica en pleno vuelo. Este mecanismo de alerta recoge el efecto
+de CLUN-LSR sobre el ruteo físico, sin simular el protocolo. Cuando la
+interferencia no siempre se nota antes de entrar en la zona
+($p_{\rm det}\leq 0{,}5$), el aviso eleva la tasa de finalización de los UAV
+seguidores entre 10 y 17 puntos porcentuales y ningún vehículo empeora por
+recibirlo; con detección perfecta en el borde el aviso resulta casi irrelevante
+(+0,2 a +0,5 pp). Los resultados proceden del conjunto de ajuste: la corrida
+sobre el conjunto reservado sigue pendiente.
+\end{abstract}
+
+\begin{IEEEkeywords}
+UAV, ruteo resiliente, flota, aviso de interferencia, Yen, Dijkstra, pgRouting,
+PostGIS, inspección territorial.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+\section{Introducción y delimitación del enfoque}
+
+La primera entrega estudió CLUN-LSR, un protocolo que busca recuperar
+\emph{caminos de comunicación} cuando la interferencia afecta los enlaces
+de radio de una red de UAV \cite{zheng}; en ese modelo, cada vehículo es un
+nodo, cada enlace es una arista y una ``ruta'' indica por cuáles vehículos
+pasan los datos. El análisis posterior del planteamiento inicial permitió
+identificar que la frecuencia del problema no estaba cuantificada, que la
+hipótesis no anticipaba un resultado medible y que los objetivos se
+concentraban en preparar datos en lugar de evaluar el mecanismo de ruteo.
+También se advirtió que las posiciones de aviones comerciales de OpenSky no
+representaban vuelos UAV a baja altura, por lo que esa fuente se descartó
+como infraestructura de navegación; hacía falta, además, delimitar una
+misión concreta y considerar la dimensión vertical del entorno.
+
+En consecuencia, el presente trabajo estudia otra clase de ruta: el
+\emph{desplazamiento físico} de un UAV simulado entre lugares de
+observación, representados como nodos unidos por posibles segmentos de
+vuelo. El caso de referencia es una inspección territorial civil en
+Mykolaiv, Ucrania. El experimento se plantea en dos niveles: primero un UAV
+aislado, que solo conoce lo que observa desde el nodo donde se encuentra, y
+después una \emph{flota reactiva} de tres a cinco vehículos que recorren la
+misma misión escalonados en el tiempo y comparten lo que descubren. De
+CLUN-LSR se conserva únicamente el \emph{efecto} de su mecanismo sobre el
+ruteo físico ---que la alerta de interferencia llegue a los demás por
+retransmisión multisalto y estos replanifiquen---, sin reproducir sus capas,
+su gestión de espectro ni MP-OLSR, y sin atribuirle planificación de
+trayectorias. Para generar opciones de desplazamiento se emplean los $K$
+caminos simples de Yen \cite{yen}, mientras que Luna \emph{et al.}
+constituyen un antecedente de replanificación durante misiones de
+inspección \cite{luna}. No se reproducen su método de cobertura poligonal ni
+su arquitectura de comunicaciones.
+
+\section{Contexto, problema e hipótesis}
+
+\subsection{Caso de estudio y alcance}
+
+Mykolaiv se utiliza como \emph{referencia histórica y cartográfica
+provisional}: una evaluación satelital de UNOSAT, basada en imágenes del
+21 de julio de 2022, identificó 198 estructuras con daño visible, aunque
+el propio producto advierte que su análisis es preliminar y no fue
+validado en terreno \cite{unosat}.
+
+Al 19 de octubre de 2026 también existen reportes de ataques recientes
+contra la \emph{ciudad}: según la Policía Nacional de Ucrania, un ataque
+ruso con drones del 3 de agosto causó una muerte, siete personas heridas y
+daños en viviendas \cite{policiaAgo2026}; el 2 de octubre se informó de
+otro ataque que hirió a tres residentes y afectó viviendas, un hotel,
+locales y depósitos \cite{policiaOctDos2026}, mientras que durante la
+noche del 10 de octubre se documentaron daños en un edificio residencial,
+edificios administrativos, oficinas y tiendas \cite{policiaOctDiez2026}.
+Estos reportes dan cuenta de daños urbanos, pero no registran fallas de
+navegación de UAV ni interferencia en las rutas simuladas aquí.
+
+El PNUD, por su parte, documenta una iniciativa de recuperación de Mykolaiv
+y la entrega en 2026 de herramientas para recopilar datos espaciales y
+aéreos a una comunidad de la región \cite{undpM,undpDatos}. Ese contexto
+permite formular \emph{académicamente} una misión civil de observación
+territorial, sin afirmar que la misión simulada haya ocurrido o que una
+ruta UAV local haya fallado; el grafo tampoco representa corredores aéreos
+autorizados ni un plan de vuelo operativo.
+
+La misión fijada en el software parte de $A$, visita en orden los puntos
+obligatorios $P_1,P_2,P_3$ y termina en $B$, de modo que se divide en cuatro
+tramos origen--destino: $A\!\to\!P_1$, $P_1\!\to\!P_2$,
+$P_2\!\to\!P_3$ y $P_3\!\to\!B$; en cada tramo pueden compararse rutas
+alternativas entre los mismos extremos. Esta visita de puntos representa
+una inspección discreta y no cobertura continua del área, pues el sistema
+no modela cámara, campo visual ni porcentaje de superficie observada. Cada
+UAV descubre bloqueos solo en los tramos incidentes al nodo que alcanzó; en
+la configuración de flota, lo que un vehículo descubre puede llegar a los
+demás por el aviso compartido de la Sección~\ref{sec:flota}, pero ninguno
+observa el estado global del grafo.
+
+\subsection{Pregunta, hipótesis y objetivos}
+
+La pregunta es si preparar rutas por corredores físicamente separados y
+recalcular el trayecto al descubrir un segmento indisponible permite
+completar más misiones que preparar dos rutas únicamente según su
+distancia. Como dos caminos pueden utilizar aristas distintas y, aun así,
+pasar lo bastante cerca para ser afectados por una misma falla espacial,
+se consideran tanto su separación como su longitud; el presupuesto y los
+escenarios de falla permanecen iguales para todos los métodos comparados.
+
+La segunda pregunta surge de la reunión con el profesor: con un solo dron,
+avisar al resto ``es un problema que no existe''. Si varios UAV recorren la
+misma misión de forma escalonada, el primero que entra en una zona de
+interferencia se convierte en una señal para los que vienen detrás, ya sea
+porque la detecta y la comunica o porque deja de responder. Cabe entonces
+preguntarse cuánto aporta ese aviso a la finalización de la misión de los
+vehículos siguientes, y si aporta algo \emph{por encima} de que cada uno
+replanifique con lo que ve por su cuenta.
+
+\textbf{Hipótesis principal refutable:} con parámetros congelados antes de la
+evaluación reservada, la estrategia propuesta $C$ tendrá mayor tasa de
+finalización de misión que el par Dijkstra fijo $A$, con diferencia pareada
+estadísticamente detectable y sin superar el presupuesto establecido.
+Además, $C$ se contrastará con un Dijkstra que también recalcula la ruta
+desde la posición actual ($D$), para distinguir el beneficio de
+\emph{replanificar} del posible aporte de \emph{elegir rutas separadas y
+usar puntajes contextuales}; si $C$ no supera a $D$, la mejora frente a
+$A$ no podrá atribuirse a esa selección.
+
+\textbf{Hipótesis de la flota:} en escenarios donde la interferencia no
+siempre se advierte antes de entrar en la zona, compartir el aviso aumentará
+la tasa de finalización de los UAV \emph{seguidores} respecto de la misma
+estrategia sin aviso, y ese aumento crecerá con el número de vehículos. La
+hipótesis es refutable en dos sentidos: si la detección en el borde es
+perfecta, el efecto debería desaparecer, porque cada UAV esquiva la zona por
+su cuenta; y si el aviso llegara tarde o indujera desvíos innecesarios,
+algunos seguidores completarían la misión sin aviso y la perderían con él.
+
+\textbf{Objetivo general:} diseñar y evaluar sobre un mismo grafo un mecanismo
+de ruteo físico que mantenga la capacidad de completar la inspección de puntos
+cuando aparecen fallas espaciales simuladas, tanto con un UAV como con una
+flota que comparte avisos de interferencia.
+
+\textbf{Objetivos específicos:} (i) construir y documentar el grafo y sus
+atributos geoespaciales; (ii) transformar metadata y registros contextuales
+en restricciones y puntajes explícitos, preservando su incertidumbre;
+(iii) generar y comparar al menos dos rutas por método; (iv) medir la
+finalización de misión, la disponibilidad del par, el recorrido y el tiempo
+de cálculo en escenarios pareados; y (v) implementar la difusión del aviso
+entre UAV y la replanificación en vuelo, y cuantificar su aporte aislándolo
+de la replanificación individual.
+
+\section{Infraestructura, ETL y base de datos}
+
+El \emph{espacio de navegación} se representa mediante un único grafo
+$G=(V,E)$, donde $V$ contiene lugares geolocalizados por los que podría
+pasar el UAV y $E$ contiene los segmentos candidatos de desplazamiento;
+estas aristas no son enlaces de radio entre vehículos. Decir que el UAV
+está en un nodo significa que alcanzó ese lugar, mientras que su posición
+y la distancia ya recorrida pertenecen al estado de la simulación. Aunque
+los puntos y segmentos del grafo permanecen definidos, una arista puede
+dejar de ser \emph{admisible} cuando aparece una restricción conocida o se
+descubre una falla, lo que representa el cambio durante la misión sin
+tener que construir un grafo nuevo en cada instante.
+
+La malla reproducible del recorte Mykolaiv contiene 196 nodos y 618
+aristas; parte de puntos separados nominalmente por 0,5 km, que pueden
+conectarse con hasta ocho vecinos. Sus coordenadas se perturban en una
+fracción de 0,25 del tamaño de celda y se retira el 12\% de las aristas
+sin desconectar el conjunto (semilla 7), con lo cual se generan
+alternativas comparables en el mismo espacio. La existencia de cada
+segmento sigue siendo un \emph{supuesto experimental} y no demuestra que
+allí exista un corredor aéreo permitido o transitable por un UAV real.
+
+La base utiliza PostgreSQL para almacenar los datos, PostGIS para consultar
+su posición espacial y pgRouting para calcular caminos: \texttt{nodos}
+guarda coordenadas y elevación; \texttt{aristas}, extremos, longitud y
+atributos de cada segmento; \texttt{mision}, los puntos obligatorios;
+\texttt{meta\_*} y \texttt{amz\_*}, los datos externos transformados;
+\texttt{fuentes}, su procedencia; y \texttt{rutas}/\texttt{evaluaciones},
+las salidas. El esquema y el diagrama están en \texttt{BD/schema.sql} y
+\texttt{BD/diagrama\_bd.png}. Como las coordenadas horizontales usan
+EPSG:4326 y la elevación del terreno y de los obstáculos se incorpora
+como atributo, el modelo es \emph{2,5D}: comprueba el margen vertical de
+forma aproximada, sin buscar trayectorias con ascensos, descensos o
+maniobras tridimensionales.
+
+El archivo raíz \texttt{main.py} coordina Docker y \texttt{pipeline.py}:
+se crea el esquema, se carga el grafo generado en JSON, se descargan y
+transforman las fuentes externas, se asignan atributos y puntajes a las
+aristas y se calculan rutas de ejemplo, tras lo cual se generan el
+diagrama y el sitio Leaflet. Cada JSON de entrada cuenta con un documento
+\texttt{ESTRUCTURA\_*.md} que explica sus campos y con un cargador
+asociado; la arquitectura y las consultas se detallan en
+\texttt{BD/MODELO\_BD.md}. Esta cadena prepara el experimento, cuyo objeto
+de evaluación es la decisión de ruta y la reacción ante fallas, no la
+mera carga de registros.
+
+La Tabla~\ref{tab:fuentes} distingue entre \emph{metadata}, que describe
+condiciones capaces de modificar la admisibilidad o el costo de un tramo
+---por ejemplo, una altura excesiva puede excluirlo y el viento puede
+encarecerlo---, y \emph{fuentes de amenazas}, que aportan contexto espacial
+histórico. La cercanía de un registro no demuestra que el tramo esté
+cerrado o interferido: ese cierre ocurre únicamente en los escenarios de
+falla sintética definidos más adelante.
+
+\begin{table*}[!t]
+\centering
+\caption{Fuentes implementadas y traducción al modelo. ``Indicador'' no equivale a falla observada de un UAV.}
+\label{tab:fuentes}
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}p{2.3cm}p{3.2cm}X p{3.2cm}@{}}
+\toprule
+\textbf{Fuente} & \textbf{Dato extraído} & \textbf{Uso implementado} & \textbf{Límite principal} \\
+\midrule
+OSM/Overpass \cite{osm} & Huellas y etiquetas \texttt{height}/\texttt{building:levels} & Altura estimada de edificios próximos al tramo; exclusión si el obstáculo alcanza el margen vertical. & Alturas incompletas; tres metros por nivel es un supuesto. \\
+Open-Meteo Elevation \cite{elev} & Elevación de nodos y puntos medios, Copernicus GLO-90 & Relieve relativo al punto de salida en la regla 2,5D. & Resolución de 90 m y muestreo de tres puntos por arista. \\
+Open-Meteo Historical Weather \cite{meteo} & Serie horaria de viento en un punto & Límite global de viento y factor direccional de costo. & Resolución regional; el script no fija explícitamente el modelo meteorológico en la petición. \\
+GPSJam \cite{gpsjam} & Conteos ADS-B de precisión GNSS por celda H3 & Fracción histórica de días con celda en rojo, usada como indicador regional. & Aviones en altura; no detecta jamming UAV ni tiene detalle por calle. \\
+The Economist/NASA FIRMS \cite{warfire} & Focos térmicos clasificados como relacionados con la guerra & Densidad histórica para el puntaje; eventos posteriores para centros de fallas sintéticas. & La clasificación es incierta; un foco no bloquea automáticamente una arista. \\
+UCDP GED \cite{ucdp} & Eventos georreferenciados y precisión del lugar & Densidad espacial histórica para un puntaje contextual. & \texttt{where\_prec}=2 admite aprox. 25 km de incertidumbre; no mide una barrera de vuelo. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+En la tabla, \emph{área de estudio} designa el recorte urbano donde se
+construyó el grafo. OSM (OpenStreetMap) aporta geometrías y etiquetas de
+edificios, aunque no entrega alturas verificadas para todos ellos;
+GPSJam resume en celdas H3 la precisión de posiciones ADS-B reportadas por
+aviones y, por tanto, funciona solo como señal regional e indirecta de
+posibles problemas GNSS. UCDP GED reúne eventos de conflicto cuya
+localización puede ser imprecisa, mientras que los focos térmicos
+clasificados a partir de NASA FIRMS sirven como antecedentes espaciales
+cuya relación con un bloqueo de vuelo no está demostrada. Ninguna de
+estas fuentes constituye un sensor embarcado en el UAV simulado.
+
+\section{Modelo de restricciones y fallas}
+
+El UAV simulado conserva una altura fija respecto de la elevación del punto
+de partida $A$; para estimar el margen vertical disponible en una arista
+$e$, se compara esa altura de vuelo con la mayor elevación u obstáculo
+estimado a lo largo del segmento. La altura relativa del obstáculo se
+aproxima mediante
+\begin{equation}
+ H_e=(z_{\max,e}-z_A)+h_{\max,e},
+\end{equation}
+donde $z_{\max,e}$ es el máximo de tres muestras de elevación del terreno,
+$z_A$ es la elevación del despegue y $h_{\max,e}$ es la mayor altura
+estimada de un edificio próximo. La arista $e$ se excluye cuando
+$H_e\geq h_{\rm vuelo}-m$, donde $m$ evita considerar suficiente un paso
+justo sobre el obstáculo; si falta algún dato, el tramo permanece abierto
+en el modelo, sin que eso certifique su seguridad. Además, el modelo
+digital de elevación (DEM) puede incorporar parte de la superficie
+construida, de modo que sumarle la altura del edificio podría sobreestimar
+el obstáculo.
+
+El viento histórico representa una condición general del área y no una
+medición instantánea a lo largo de toda la ruta: si supera el umbral
+configurado, la misión se marca como no admisible; en caso contrario, su
+dirección modifica el costo relativo de cada segmento. Conviene señalar que
+la comparación se hace contra la \emph{mediana} de la ventana, 6,43 m/s a la
+altura de vuelo frente a un umbral de 12 m/s, de modo que esta restricción
+no llega a activarse con los datos disponibles; la ráfaga máxima registrada,
+19,1 m/s a 10 m, sí lo superaría. Como el sitio aún puede mostrar rutas de
+referencia cuando se excede el umbral, esa pantalla no debe interpretarse
+como autorización de vuelo. La interfaz también ofrece una opción de zonas
+restringidas, pero no se cargó una fuente que active tal atributo ---el
+campo correspondiente es falso en los 618 segmentos--- y, por ello, no se
+considera una restricción evaluada.
+
+Cada escenario contiene $n_f$ zonas circulares descritas por
+$f=(x_f,y_f,r_f,s_f)$: el centro $(x_f,y_f)$ y el radio $r_f$ delimitan
+la zona afectada, mientras que $s_f$ indica la distancia acumulada por el
+UAV cuando se activa la falla. Desde ese momento, un segmento que
+intersecte el disco queda bloqueado; su centro puede elegirse cerca de un
+foco contextual o en otra parte del área, pero el disco \emph{no}
+representa un evento observado. Conviene precisar hasta dónde llega ese
+vínculo con los focos en la configuración actual: en el experimento de
+\texttt{resultados/} los focos son sintéticos y se sortean dentro de la
+malla, mientras que en la ruta que usa la base de datos los quince
+incendios del período de evaluación caen \emph{todos} fuera de la caja de
+la malla, entre 1,95 y 5,12 km de la red. Como el muestreo recorta la
+posición a esa caja, el centro de toda falla de origen ``foco'' termina
+pegado al borde. Dicho de otro modo, en esa ruta la siembra cerca de un
+incendio no se materializa, y así se informa en la documentación técnica
+como defecto pendiente. Tanto el radio como la activación y el
+bloqueo son supuestos que permiten ensayar cambios de disponibilidad
+posteriores a la planificación sin atribuirles una causa real.
+
+El UAV solo descubre el estado de los segmentos conectados al nodo que
+acaba de alcanzar, por lo que una falla lejana puede existir sin que la
+conozca todavía; al detectarla, actualiza su información y decide si
+replanifica. Los discos que cubren un punto obligatorio se vuelven a
+muestrear, pues impedirían completar la misión a todos los métodos, de
+modo que la tasa de éxito queda \emph{condicionada} por ese criterio.
+Ninguna fuente contextual prueba por sí sola el cierre real de una ruta,
+ni la pérdida de un reporte permite identificar jamming como su causa.
+
+\begin{table}[!t]
+\centering
+\caption{Parámetros principales fijados en el código.}
+\label{tab:parametros}
+\footnotesize
+\begin{tabular}{@{}p{3.7cm}p{3.2cm}@{}}
+\toprule
+\textbf{Parámetro} & \textbf{Valor por defecto} \\
+\midrule
+Altura de vuelo; margen vertical & 60 m; 10 m \\
+Viento máximo; crucero & 12 m/s; 12 m/s \\
+Desvío máximo $\alpha$; presupuesto extra $\beta$ & 0,35; 0,60 \\
+Pesos $w_L,w_S,w_R$; candidatas Yen & 1, 1, 1; $K=8$ \\
+Separación espacial $d_{\rm sep}$ & 0,4 km \\
+Radio de incertidumbre $\rho$; penalización $\gamma$ & 0,6 km; 3 \\
+Fallas por escenario; radios & 3; 0,25--0,60 km \\
+Probabilidad de foco; dispersión & 0,5; 0,5 km \\
+\midrule
+\multicolumn{2}{@{}l}{\emph{Flota (Sección~\ref{sec:flota})}} \\
+UAV por flota $N$; separación de despegues & 4; 1 km \\
+Alcance de radio UAV--UAV & 3 km \\
+Beacon; beacons para declarar silencio & 2 s; 3 \\
+Probabilidad de detección $p_{\rm det}$ & 0,5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Algoritmos de rutas}
+
+Los parámetros de la Tabla~\ref{tab:parametros} controlan decisiones
+distintas: $K$ limita las opciones generadas por Yen; $\alpha$ acota el
+alargamiento de cada candidata respecto del camino mínimo; $\beta$ fija
+los kilómetros adicionales disponibles para toda la misión; y
+$d_{\rm sep}$ determina cuándo dos rutas atraviesan un mismo corredor.
+Ante un tramo bloqueado, $\rho$ delimita el entorno considerado incierto
+y $\gamma$ eleva temporalmente el costo de los tramos cercanos. Todos
+estos valores son elecciones de simulación y no especificaciones
+certificadas de un UAV real.
+
+\subsection{Línea base y método propuesto}
+
+La \emph{línea base} busca con \texttt{pgr\_dijkstra} el camino de menor
+distancia, usando como costo solo los kilómetros de cada arista, y ejecuta
+una segunda búsqueda sin las aristas del primer camino para obtener otra
+opción. Esto permite compararla con la propuesta sin incorporar puntajes
+de amenaza ni separación espacial; sin embargo, si la exclusión
+desconecta origen y destino, el código recurre a multiplicar por diez el
+costo de las aristas iniciales. \emph{En ese caso el costo deja de ser
+exclusivamente kilométrico}, por lo que debe informarse por separado.
+El ejemplo obtuvo dos rutas, aunque ello no garantiza dos alternativas
+independientes para cualquier par de nodos.
+
+El método propuesto usa Yen para enumerar hasta ocho caminos simples, es
+decir, rutas que no repiten nodos \cite{yen,pgr}; como las dos primeras
+opciones podrían atravesar el mismo sector, Yen por sí solo no garantiza
+resiliencia. Por eso se incorpora la ruta mínima en kilómetros si no
+aparece entre las candidatas y se prefieren aquellas que respetan el
+desvío y el presupuesto disponible; cuando ninguna cabe, se conserva la
+mínima para intentar avanzar, aunque la misión pueda fracasar por exceso
+de recorrido. Entre los pares restantes $(p,q)$ se minimiza
+\begin{equation}
+ J(p,q)=w_L\!\left(\frac{L(p)+L(q)}{2L_{\min}}-1\right)
+          +w_S S(p,q)+w_R\frac{R(p)+R(q)}{2},
+\end{equation}
+donde $L(p)$ y $L(q)$ son las longitudes de las rutas, $L_{\min}$ la longitud
+del camino más corto, $S(p,q)$ el solape espacial y $R(p)$ y $R(q)$ sus
+puntajes medios de riesgo contextual. Los tres términos penalizan,
+respectivamente, el desvío, el paso de ambas rutas por lugares próximos
+aunque no compartan aristas, y la presencia de más indicadores
+históricos; así se favorece una alternativa físicamente separada sin
+admitir recorridos arbitrariamente largos. Por su parte, el costo para
+\emph{buscar} cada candidata combina distancia, viento y riesgo:
+\begin{equation}
+ c(e,u\!\to\!v)=L_e f_{\rm viento}(u,v)(1+w_R r_e)\pi_e.
+\end{equation}
+En esta expresión, $L_e$ es la longitud real del tramo,
+$f_{\rm viento}$ aumenta el costo si el viento es desfavorable, $r_e$
+resume el contexto y $\pi_e$ penaliza el entorno de un bloqueo
+descubierto; por tanto, el resultado guía la \emph{elección de ruta} y no
+equivale a los kilómetros recorridos. En la base de datos, los
+componentes de $r_e$ se agregan mediante $1-\prod_i(1-r_i)$, que produce
+un puntaje entre cero y uno sin convertir los registros en una
+probabilidad calibrada de fracaso, pues las fuentes son heterogéneas y
+no se ha demostrado su independencia.
+
+\begin{lstlisting}[caption={Pseudocódigo del mecanismo implementado; cada tramo une dos puntos consecutivos de la misión.},label={alg:propuesta}]
+PLANIFICAR(s, t, conocidas, km_restantes):
+  G_adm <- G sin restricciones ni fallas conocidas
+  r_min <- Dijkstra(G_adm, s, t, costo = km)
+  C <- Yen(G_adm, s, t, K=8, costo = c)
+  C <- C union {r_min}
+  C <- candidatas que cumplen desvio y holgura
+  (p,q) <- par de C con menor J(p,q)
+  devolver principal = menor costo c; alternativa = otra
+
+AL_DESCUBRIR(arista bloqueada b):
+  registrar b como conocida
+  penalizar aristas cercanas a b dentro de rho
+
+REACCIONAR(posicion, siguiente punto t):
+  r <- Dijkstra(posicion, t, costo = c,
+                sin aristas conocidas bloqueadas)
+  si largo(r) excede holgura:
+      r <- Dijkstra(posicion, t, costo = km,
+                    sin aristas conocidas bloqueadas)
+  si no existe r: registrar fracaso
+  devolver r
+\end{lstlisting}
+
+Yen genera las opciones, mientras que la selección del par y la reacción
+ante un bloqueo pertenecen al mecanismo implementado: cuando se descubre
+una arista cerrada, el simulador la excluye y encarece los tramos cercanos
+por la incertidumbre sobre la extensión de la falla; si el desvío ya no
+cabe en el presupuesto, busca el camino disponible más corto. La
+alternativa precalculada permite medir la calidad del par, pero no es
+necesariamente la que seguirá el UAV, pues $C$ calcula un nuevo Dijkstra
+tras el bloqueo; por ello, una mejora frente a un par fijo podría deberse
+a la replanificación y no a la elección inicial.
+
+\section{Flota reactiva con aviso compartido}
+\label{sec:flota}
+
+Hasta aquí cada UAV solo dispone de lo que observa, de modo que la
+información sobre una zona de interferencia muere con el vehículo que la
+encuentra. La extensión implementada en \texttt{ruteo/flota.py} hace que esa
+información circule: $N\in\{3,4,5\}$ UAV recorren la misma misión
+$A\!\to\!P_1\!\to\!P_2\!\to\!P_3\!\to\!B$, despegan de $A$ separados por
+1 km recorrido a velocidad de crucero ---unos 83 s a 12 m/s--- y cada uno
+conserva su propio presupuesto $(1+\beta)L^*$. El reloj de la simulación se
+mide en kilómetros a esa velocidad, por lo que con $N=1$ el simulador de
+flota reproduce exactamente la misión individual descrita antes; esa
+equivalencia se comprueba en \texttt{tests/test\_flota.py}.
+
+\subsection{Detección y las dos vías de aviso}
+
+Al alcanzar un nodo, el UAV revisa los tramos incidentes y advierte con
+probabilidad $p_{\rm det}$ aquellos que cruzan una zona activa. Si no la
+advierte y su plan usa uno de esos tramos, entra en la zona y pierde el
+enlace: ese vehículo se da por perdido y no se recupera. Sobre esa base
+operan dos mecanismos complementarios.
+
+El \emph{aviso por detección} corresponde al efecto que se recoge de
+CLUN-LSR. El UAV que advierte la interferencia difunde de inmediato los
+tramos afectados, siempre que conserve el enlace, es decir, siempre que no
+esté rodeado por la zona. El aviso se retransmite de vehículo en vehículo
+---y también a través de la estación en $A$, que actúa como relé--- entre
+quienes se encuentran a no más de 3 km entre sí, de manera que un UAV fuera
+de alcance lo recibe al reconectarse. No se modelan pérdida de paquetes,
+latencia ni ocupación del canal: el alcance se representa como un disco
+ideal y la difusión se resuelve calculando las componentes conexas del
+grafo de proximidad en cada instante.
+
+El \emph{aviso por silencio} cubre precisamente el caso que el anterior no
+puede cubrir: el vehículo que queda dentro de la zona no puede avisar. Cada
+UAV emite un \emph{beacon} cada 2 s; cuando deja de emitirlo, quienes
+estaban en alcance de su última posición declaran su silencio tras tres
+beacons perdidos ---6 s--- y marcan como zona a evitar los tramos situados
+a no más de $\rho$ de esa posición. Si al excluirlos no queda ninguna ruta
+hacia el punto siguiente, la marca se ignora, de modo que una sospecha
+nunca deja a un UAV sin plan. Así, la pérdida de reporte funciona como
+indicio de interferencia sin que el modelo afirme que esa es su causa.
+
+Quien recibe un aviso incorpora los tramos afectados a su información:
+$D_A$ los excluye y $C_A$, además, penaliza su entorno mediante $\pi_e$. Si
+la parte pendiente de su ruta los atraviesa, \textbf{replanifica en ese
+instante} desde el nodo hacia el que vuela, sin esperar a toparse con el
+bloqueo; un UAV que aún no despega planifica ya con el aviso incorporado.
+No se admite girar en mitad de un tramo, de modo que el cambio rige desde
+el nodo siguiente.
+
+\begin{lstlisting}[caption={Difusión del aviso y reacción en vuelo; complementa el pseudocódigo anterior.},label={alg:flota}]
+AL_DETECTAR(uav, tramos bloqueados B, t):
+  registrar B en el conocimiento de uav
+  si uav NO esta rodeado por la zona:
+      emitir aviso(deteccion, B, t)
+
+AL_PERDER(uav, nodo, t):
+  programar silencio(uav, nodo) en t + 3*beacon
+
+SILENCIO(uav, nodo, t):
+  oyentes <- UAV conectados con nodo en t
+  si oyentes no vacio:
+      emitir aviso(silencio, evitar = tramos a <= rho de nodo, t)
+
+DIFUNDIR(t):
+  para cada componente conexa por alcance de radio:
+      todos sus miembros conocen la union de sus avisos
+
+AL_RECIBIR(uav, aviso, t):
+  actualizar conocidas y evitar
+  si la ruta pendiente de uav cruza lo avisado:
+      replanificar desde el nodo hacia el que vuela
+\end{lstlisting}
+
+\subsection{Estrategias comparadas y métricas}
+
+Para separar el aporte del aviso del aporte de la selección de rutas se
+comparan cinco configuraciones sobre los \emph{mismos} escenarios: $A$, $D$
+y $C$ sin aviso, donde cada UAV aprende solo lo que ve, y $D_A$ y $C_A$ con
+aviso compartido. La diferencia $D_A-D$ mide entonces el valor del aviso
+sobre una misma política de replanificación, mientras que $C_A-D_A$ mide lo
+que añade la selección resiliente por encima del aviso. El sorteo de
+detección se fija por escenario, vehículo y tramo, así que todas las
+estrategias enfrentan exactamente las mismas oportunidades de advertir una
+zona.
+
+La métrica principal es $R_{\rm seguidores}$, la tasa de finalización de los
+UAV $2\ldots N$, que son los únicos que pueden aprovechar un aviso ajeno; el
+líder se informa por separado, porque su desempeño no debería cambiar con el
+mecanismo. Se registran además la tasa sobre todos los vehículos
+$R_{\rm uav}$, la fracción de escenarios en que al menos uno completa la
+misión, los UAV perdidos por escenario, los cambios de ruta provocados por un
+aviso y la demora entre la detección ---o la pérdida del vehículo--- y el
+instante en que cada uno de los demás se entera. Como los UAV de un mismo
+escenario comparten fallas y no son independientes, el $p$ de McNemar
+calculado sobre pares (escenario, UAV) se informa como orientativo.
+
+\section{Metodología de evaluación}
+
+El presupuesto se fija como $L_{\max}=(1+\beta)L^*$, donde $L^*$ suma las
+distancias mínimas \emph{sin fallas} de los cuatro tramos; con
+$\beta=0,60$ se permite recorrer hasta un 60\% más que ese mínimo para
+absorber desvíos, aunque ninguna ruta individual recibe por ello una
+holgura ilimitada. Una misión se considera exitosa solo si visita
+$P_1,P_2,P_3$ en orden, llega a $B$ y no supera $L_{\max}$, por lo que
+la métrica principal es la proporción de escenarios que cumplen todas
+esas condiciones:
+\begin{equation}
+ R_{\rm mision}=\frac{\#\{\text{misiones completadas}\}}
+                         {\#\{\text{escenarios evaluados}\}}.
+\end{equation}
+La métrica complementaria $R_{\rm par}$ expresa la proporción de tramos
+y escenarios en que al menos una ruta preparada antes de salir permanece
+libre de las fallas simuladas; describe la calidad del \emph{par}, no la
+finalización de la misión, porque el UAV puede desconocer una falla al
+partir o encontrarla más tarde. También se registran kilómetros
+recorridos, sobrelongitud respecto de $L^*$, replanificaciones y tiempo
+de cálculo. La diferencia $\Delta R=100(R_C-R_A)$ se informa en
+\emph{puntos porcentuales} ---de 87\% a 97\% son $+10$ puntos--- y la
+prueba exacta de McNemar compara qué método completa cada uno de los
+\emph{mismos} escenarios.
+
+Se comparan $A$ (dos Dijkstra fijos), $B$ (dos caminos más cortos de Yen
+sin selección), $D$ (Dijkstra que replanifica), $C$ (propuesta), $C0$
+(propuesta sin penalización del entorno) y $C1$ (sin control de
+presupuesto). Los pares precalculados de $A$ y $B$ muestran qué ocurre
+sin replanificación, $D$ aísla el beneficio de recalcular la ruta y $C0$
+y $C1$ examinan dos componentes de $C$; para que la comparación sea
+válida, todos comparten grafo, restricciones, puntos, escenarios y límite
+de recorrido. Las semillas 0--99 se destinan al \emph{ajuste}, donde se
+probaron una, tres y cinco fallas con probabilidades de situarlas cerca
+de un foco de 0, 0,5 y 0,8; las semillas 10\,000--10\,299 quedan
+reservadas para la evaluación final tras congelar parámetros, y el sitio
+usa otras semillas para demostración. Los experimentos de flota emplean esas
+mismas semillas de ajuste, de modo que las cinco estrategias con y sin aviso
+se enfrentan a escenarios idénticos y la comparación sigue siendo pareada; en
+ellos se barren $N\in\{3,4,5\}$ y
+$p_{\rm det}\in\{1;\,0{,}5;\,0\}$, por tratarse de un supuesto sin respaldo
+empírico disponible.
+
+Hay dos ejecuciones que deben distinguirse: los resultados comparativos de
+\texttt{resultados/} provienen del simulador Python, con grafo y focos de
+riesgo \emph{sintéticos}, y evalúan la misión completa
+$A\!\to\!P_1\!\to\!P_2\!\to\!P_3\!\to\!B$; en cambio, el pipeline
+PostGIS/pgRouting carga las seis fuentes externas y produce un ejemplo de
+rutas entre el primer y el último nodo de \texttt{mision}. Este segundo
+resultado comprueba consultas y permite visualizar un par
+origen--destino, pero no evalúa por sí mismo las cuatro visitas
+obligatorias; por eso, sus cifras de resiliencia se interpretan por
+separado de las del experimento Python.
+
+\section{Resultados disponibles y lectura crítica}
+
+El repositorio conserva en \texttt{resultados/} cifras
+\emph{preliminares del conjunto de ajuste}; con la malla y misión por
+defecto, $L^*=13,1637$ km. La Tabla~\ref{tab:resultados} presenta
+cuatro configuraciones de 100 escenarios cada una, en las que todos los
+métodos enfrentan las mismas fallas simuladas: $n_f$ indica su número y
+$\beta$ el recorrido adicional permitido. Ningún valor de esta tabla
+proviene de vuelos reales ni del ejemplo de rutas de la base de datos.
+
+\begin{table}[!t]
+\centering
+\caption{Tasa $R_{\rm mision}$ en el conjunto de ajuste; probabilidad de foco 0,5.}
+\label{tab:resultados}
+\footnotesize
+\begin{tabular}{@{}ccrrrr@{}}
+\toprule
+$n_f$ & $\beta$ & $A$ & $B$ & $D$ & $C$ \\
+\midrule
+3 & 0,60 & 0,91 & 0,82 & 0,96 & 0,97 \\
+5 & 0,60 & 0,87 & 0,73 & 0,96 & 0,97 \\
+5 & 0,20 & 0,75 & 0,72 & 0,94 & 0,90 \\
+5 & 0,10 & 0,70 & 0,71 & 0,91 & 0,84 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Con cinco fallas y $\beta=0,60$, $C$ completó 97 de 100 misiones frente a
+87 de $A$: son $+10$ puntos porcentuales ($p=0,01294$ en la prueba
+pareada). Sin embargo, $D$ completó 96, casi lo mismo que $C$ ($+1$ punto;
+$p=1$). Cuando el presupuesto baja a $\beta=0,10$, $C$ queda siete puntos
+por debajo de $D$. El par de $C$ tiene mayor $R_{\rm par}$ que el de $A$
+en la configuración de cinco fallas y $\beta=0,60$ (0,94 frente a 0,9075),
+lo que indica que sus
+dos rutas precalculadas resisten mejor las fallas simuladas. No demuestra
+que esa selección cause la mayor finalización de misiones: el resultado
+frente a $D$ sugiere que \emph{replanificar} explica gran parte de la
+diferencia frente a $A$. En esa corrida local, el cálculo de $C$ tomó en
+promedio unos 34 ms por misión; $A$ y $D$, menos de 2 ms.
+
+\subsection{Flota con aviso compartido}
+
+La Tabla~\ref{tab:flota} reúne el barrido de flota sobre el mismo conjunto
+de ajuste, con 100 escenarios por celda. Las tasas corresponden a los UAV
+seguidores y los $\Delta R$ se expresan en puntos porcentuales sobre esa
+población.
+
+\begin{table}[!t]
+\centering
+\caption{Flota en el conjunto de ajuste: $R_{\rm seguidores}$ y aporte del aviso. Primera fila con tres fallas; el resto, con cinco. Probabilidad de foco 0,5 y $\beta=0,60$.}
+\label{tab:flota}
+\footnotesize
+\begin{tabular}{@{}ccrrrrr@{}}
+\toprule
+$p_{\rm det}$ & $N$ & $D$ & $D_A$ & $C_A$ & $D_A\!-\!D$ & $C_A\!-\!D_A$ \\
+\midrule
+0,5 & 4 & 0,770 & 0,870 & 0,930 & $+10,0$ & $+6,0$ \\
+\midrule
+1   & 3 & 0,930 & 0,935 & 0,960 & $+0,5$  & $+2,5$ \\
+1   & 4 & 0,947 & 0,950 & 0,967 & $+0,3$  & $+1,7$ \\
+1   & 5 & 0,955 & 0,958 & 0,965 & $+0,2$  & $+0,8$ \\
+0,5 & 3 & 0,690 & 0,805 & 0,835 & $+11,5$ & $+3,0$ \\
+0,5 & 4 & 0,667 & 0,807 & 0,857 & $+14,0$ & $+5,0$ \\
+0,5 & 5 & 0,637 & 0,807 & 0,873 & $+17,0$ & $+6,5$ \\
+0   & 3 & 0,605 & 0,740 & 0,730 & $+13,5$ & $-1,0$ \\
+0   & 4 & 0,573 & 0,720 & 0,740 & $+14,7$ & $+2,0$ \\
+0   & 5 & 0,542 & 0,705 & 0,740 & $+16,2$ & $+3,5$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Cuatro lecturas se desprenden de esos números. Primero, \textbf{el aviso
+nunca perjudicó a un seguidor}: en ninguna celda hubo un UAV que completara
+la misión sin aviso y la perdiera con él, de modo que las columnas de
+escenarios discordantes son unilaterales ---por ejemplo, 68 contra 0 con
+$p_{\rm det}=0,5$ y cinco vehículos--- y el $p$ de McNemar queda por debajo
+de $10^{-4}$ en todas las celdas con $p_{\rm det}\leq0,5$. Segundo, el
+beneficio aparece solo cuando la interferencia no es evidente antes de
+entrar: con $p_{\rm det}=1$ el aviso aporta entre $+0,2$ y $+0,5$ pp, pues
+cada UAV esquiva la zona por su cuenta y lo único que ahorra el aviso son
+kilómetros. Tercero, el aporte crece con el tamaño de la flota ---de $+11,5$
+a $+17,0$ pp al pasar de tres a cinco UAV con $p_{\rm det}=0,5$---, lo que
+es coherente con el mecanismo: hay más vehículos detrás que aprovechan el
+mismo aviso. Cuarto, los UAV perdidos por escenario bajan de forma
+consistente, por ejemplo de 1,24 con $D$ a 0,63 con $C_A$ en la celda de
+cuatro vehículos y $p_{\rm det}=0,5$.
+
+La demora del aviso fue de 0 a 1,8 s por detección ---casi todas las
+recepciones ocurren en el mismo instante, y los retrasos corresponden a
+vehículos que estaban fuera de alcance y lo recibieron al reconectarse--- y
+de 6 s por silencio, que es exactamente el tiempo de declarar tres beacons
+perdidos.
+
+Conviene subrayar que \textbf{el UAV que se pierde no se salva}: el
+beneficio es íntegramente para los que vienen detrás, y por eso la métrica
+principal excluye al líder. La selección resiliente por encima del aviso
+($C_A-D_A$) suma entre $+5$ y $+6,5$ pp con $p_{\rm det}=0,5$ y resulta
+detectable con tres fallas ($p=0,006$) y con cinco vehículos ($p=0,003$),
+pero no con $p_{\rm det}=0$ ni con $p_{\rm det}=1$. Es el primer escenario
+en que el aporte propio se distingue de la replanificación simple; aun así
+proviene del conjunto de ajuste y no de la evaluación reservada, de modo que
+no basta para dar por confirmada la hipótesis principal.
+
+La ejecución completa de \texttt{main.py} en Docker termina con sus 18 pasos
+correctos y permite comprobar el esquema, las consultas de pgRouting y las
+seis extracciones; la última verificación se hizo el 22 de octubre de 2026.
+Su bitácora documenta 33\,593 edificios OSM (1\,022 con altura estimada),
+814 muestras de elevación, 720 horas de viento, siete celdas GPSJam, 41
+focos térmicos clasificados y 65 eventos UCDP. Estos números describen
+\emph{registros extraídos o cargados}, no fallas sufridas por UAV. Las
+modificaciones posteriores del diagrama de base de datos mejoran su
+legibilidad; no cambian el grafo de navegación ni los resultados del
+simulador.
+
+La primera corrida reveló un error que afectaba al ejemplo de base de datos.
+Los focos del período de evaluación estaban en un margen de 5 km alrededor
+del área de estudio, pero la consulta de focos buscaba solo dentro del área
+estricta; al no encontrarlos, usaba focos \emph{históricos}, que ya habían
+servido para calcular el riesgo de los tramos. La ventana de búsqueda se
+amplió en \texttt{comun/resiliencia.py} y el ejemplo se regeneró después del
+arreglo: entre los nodos 15 y 181, la línea base entrega rutas de 8,462 y
+9,166 km y la propuesta, de 8,462 y 8,587 km, con riesgo medio menor en la
+segunda ($0,4466$ frente a $0,5253$). Sobre 100 escenarios de demostración,
+$R_{\rm par}$ resulta 0,91 para Dijkstra y 0,90 para la propuesta, mientras
+que $R_{\rm mision}$ da 0,91 para $A$ y 1,00 para $D$ y $C$
+($\Delta R=9{,}0$ pp, $p=0{,}00391$). Estas cifras describen un par
+origen--destino y no la misión con los tres puntos intermedios, por lo que
+se interpretan por separado de la Tabla~\ref{tab:resultados}. Sigue sin
+existir una corrida conservada del conjunto reservado de evaluación.
+
+\section{Discusión, límites y cumplimiento de la Tarea 2}
+
+El prototipo dispone de la cadena pedida por la rúbrica: Docker, SQL de
+creación, diagrama, extracción a JSON, cargadores, pesos, consultas
+\texttt{pgr\_dijkstra}/\texttt{pgr\_KSP}, métricas y un sitio Leaflet para
+elegir origen, destino y preferencias, con una sección que anima el mismo
+escenario de flota con aviso y sin aviso y permite mover, quitar o añadir
+los puntos de observación antes de simular; cuando la secuencia editada se
+aparta de la misión almacenada, la propia pantalla advierte que esas cifras
+no son comparables con las de este informe. La ejecución completa comprueba
+que el pipeline termina y que las cifras del ejemplo son posteriores al
+ajuste de la consulta; no sustituye la demostración en vivo de cada función
+del sitio. \texttt{ENTREGA\_TAREA2.md} indica dónde encontrar la evidencia
+asociada a los 60 puntos. El enunciado también exige alojar la versión
+evaluada en GitLab UDP; el remoto de esta copia sigue siendo GitHub y esa
+sincronización está pendiente.
+
+Las principales limitaciones científicas son: una malla y una misión
+sintéticas; conocimiento local perfecto de aristas incidentes; focos y
+fallas unidos por reglas supuestas; cobertura incompleta de alturas OSM;
+viento regional; y localizaciones de eventos con precisión variable. Un foco
+térmico, un registro de conflicto o la baja precisión GNSS de un avión no
+equivalen a un tramo UAV cerrado.
+
+Una auditoría de las seis fuentes muestra además que su aporte es muy
+desigual, y conviene declararlo antes que presentarlas como equivalentes.
+Los edificios de OpenStreetMap hacen el trabajo decisivo: 79 de las 83
+exclusiones de segmentos necesitan su altura, y solo 4 se explican por el
+relieve. Los eventos UCDP discriminan bien, con 316 valores distintos entre
+los 618 segmentos. En el otro extremo, GPSJam \emph{no discrimina en
+absoluto}: las celdas H3 de la fuente miden unos 1\,775 km$^2$ y el área de
+estudio ocupa unos 44 km$^2$, de modo que cabe entera en una sola celda y los
+618 segmentos reciben el mismo valor, 0,3333. Como el riesgo agregado es una
+función monótona de los componentes, esa constante no altera el orden de
+riesgo de ningún segmento; únicamente eleva el riesgo medio desde
+aproximadamente 0,17 hasta 0,4511, por lo que esa cifra no debe leerse como
+una medida de amenaza. Los incendios históricos aportan poco, pues solo 7 de
+los 26 quedan dentro del radio de corte de 1,5 km, y las alturas de
+edificios cubren 1\,022 de 33\,593 registros. Mejorar estas tres fuentes y
+cargar una de zonas restringidas es el trabajo pendiente más inmediato. Además, el sitio muestra un par
+origen--destino y calcula su resiliencia para esa consulta; no debe
+rotularse como éxito de la misión completa con los tres puntos intermedios.
+Tampoco se ha demostrado que el método propuesto supere consistentemente a
+$D$, que también replanifica.
+
+La flota añade sus propias limitaciones. El enlace se representa como un
+disco de alcance fijo, sin pérdida de paquetes, latencia ni saturación del
+canal, de modo que lo evaluado es el \emph{efecto} del aviso sobre el ruteo
+físico y no el desempeño de un protocolo: CLUN-LSR sigue siendo el
+antecedente del mecanismo, no algo que este trabajo implemente o replique.
+La probabilidad de detección es un parámetro sin respaldo empírico ---no hay
+datos públicos sobre con cuánta anticipación un UAV advierte la
+interferencia---, y como el resultado depende fuertemente de ella se informa
+el barrido completo en lugar de una sola cifra. Todos los vehículos
+comparten misión, velocidad y presupuesto, despegan escalonados de forma
+regular y no giran en mitad de un tramo; tampoco se modela la coordinación
+entre ellos más allá de la difusión del aviso. Por último, los UAV de un
+mismo escenario comparten fallas, así que el $p$ de McNemar sobre pares
+(escenario, UAV) no cumple el supuesto de independencia y debe leerse como
+orientativo. El alcance real del experimento es comprobar si una estrategia
+reacciona mejor \emph{bajo el modelo de fallas declarado}, no garantizar su
+desempeño en vuelos reales.
+
+\section{Conclusiones}
+
+La Tarea 2 cuenta con una implementación coherente de ruteo físico y un
+experimento reproducible de inspección de puntos. El modelo distingue las
+rutas de comunicación de las trayectorias físicas y utiliza un grafo de
+navegación único y una hipótesis cuantitativa. Con un solo vehículo, la
+propuesta mejora a un Dijkstra de par fijo en los escenarios de ajuste, pero
+no establece una ventaja consistente frente a Dijkstra con replanificación.
+
+El aporte que sí se sostiene con claridad es el de la flota: cuando la
+interferencia no se advierte siempre antes de entrar en la zona, compartir
+el aviso ---por detección o por el silencio del vehículo que quedó
+dentro--- y replanificar en vuelo eleva la finalización de los UAV
+seguidores entre 10 y 17 puntos porcentuales, el efecto crece con el número
+de vehículos y ningún seguidor empeora por recibir el aviso. El resultado
+también delimita cuándo el mecanismo es irrelevante: con detección perfecta
+en el borde, cada UAV esquiva la zona por su cuenta. Es, además, el primer
+contexto en que la selección resiliente se distingue de la simple
+replanificación, aunque con márgenes menores.
+
+Estas conclusiones valen para el conjunto de ajuste. La corrida reservada
+con parámetros congelados sigue pendiente y es la que permitirá afirmar o
+refutar las dos hipótesis. El alcance de los resultados es la simulación
+declarada, no la operación de UAV reales.
+
+\begin{thebibliography}{99}
+\bibitem{zheng} S. Zheng, X. Zhu, Z. Qin y C. Dong, ``Cross-layer UAV network routing protocol for spectrum denial environments,'' \emph{Ad Hoc Networks}, 2024, doi: 10.1016/j.adhoc.2024.103702.
+\bibitem{yen} J. Y. Yen, ``Finding the K Shortest Loopless Paths in a Network,'' \emph{Management Science}, vol. 17, no. 11, pp. 712--716, 1971, doi: 10.1287/mnsc.17.11.712.
+\bibitem{luna} M. A. Luna \emph{et al.}, ``A multi-UAV system for coverage path planning applications with in-flight re-planning capabilities,'' \emph{Journal of Field Robotics}, 2024, doi: 10.1002/rob.22342.
+\bibitem{unosat} UNOSAT, ``Mykolaiv Damage Assessment Overview Map,'' 14 oct. 2022. [En línea]. Disponible: \url{https://unosat.org/products/3404}.
+\bibitem{policiaAgo2026} Policía Nacional de Ucrania, ``Zahybla ta semero postrazhdalykh, z nykh dvoie ditei: u Mykolaievi politseiski dokumentuiut naslidky cherhovoho voiennoho zlochynu RF,'' 4 ago. 2026. [En línea]. Disponible: \url{https://mk.npu.gov.ua/news/zahybla-ta-semero-postrazhdalykh-z-nykh-dvoie-ditei-u-mykolaievi-politseiski-dokumentuiut-naslidky-cherhovoho-voiennoho-zlochynu-rf}.
+\bibitem{policiaOctDos2026} Policía Nacional de Ucrania, ``Postrazhdaly troie hromadian, zaznaly poshkodzhen tsyvilni obiekty: u Mykolaievi politseiski dokumentuiut naslidky cherhovykh voiennykh zlochyniv RF,'' 2 oct. 2026. [En línea]. Disponible: \url{https://npu.gov.ua/news/postrazhdaly-troie-hromadian-zaznaly-poshkodzhen-tsyvilni-obiekty-u-mykolaievi-politseiski-dokumentuiut-naslidky-cherhovykh-voiennykh-zlochyniv-rf}.
+\bibitem{policiaOctDiez2026} Policía Nacional de Ucrania, ``Politseiski fiksuiut naslidky nichnoi cherhovoi vorozhoi ataky RF na Mykolaiv,'' 10 oct. 2026. [En línea]. Disponible: \url{https://npu.gov.ua/news/politseiski-fiksuiut-naslidky-nichnoi-cherhovoi-vorozhoi-ataky-rf-na-mykolaiv}.
+\bibitem{undpM} PNUD, ``Mykolaiv Strategic Partnership,'' 2025--2028. [En línea]. Disponible: \url{https://www.undp.org/ukraine/projects/mykolaiv-strategic-partnership}.
+\bibitem{undpDatos} PNUD, ``UNDP provides equipment to five Ukrainian communities to support data-driven recovery,'' 31 mar. 2026. [En línea]. Disponible: \url{https://www.undp.org/ukraine/press-releases/undp-provides-equipment-five-ukrainian-communities-support-data-driven-recovery}.
+\bibitem{osm} OpenStreetMap Contributors, ``Copyright and License.'' [En línea]. Disponible: \url{https://www.openstreetmap.org/copyright}.
+\bibitem{elev} Open-Meteo, ``Elevation API: Copernicus DEM GLO-90.'' [En línea]. Disponible: \url{https://open-meteo.com/en/docs/elevation-api}.
+\bibitem{meteo} Open-Meteo, ``Historical Weather API.'' [En línea]. Disponible: \url{https://open-meteo.com/en/docs/historical-weather-api}.
+\bibitem{gpsjam} GPSJam, ``FAQ: what the map shows and its limitations.'' [En línea]. Disponible: \url{https://gpsjam.org/faq}.
+\bibitem{warfire} The Economist, ``The Economist's Ukraine war-fire model: source code and data.'' [En línea]. Disponible: \url{https://github.com/TheEconomist/the-economist-war-fire-model}.
+\bibitem{ucdp} Uppsala Conflict Data Program, ``UCDP Georeferenced Event Dataset Codebook.'' [En línea]. Disponible: \url{https://ucdp.uu.se/downloads/ged/ged251.pdf}.
+\bibitem{pgr} pgRouting Project, ``pgRouting Manual, version 3.8.'' [En línea]. Disponible: \url{https://docs.pgrouting.org/latest/en/}.
+\end{thebibliography}
+
+\end{document}
