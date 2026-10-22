@@ -70,8 +70,17 @@
         <label>Alcance de radio entre UAV (km)<input type="number" name="alcance_com_km" value="3" min="0.1" max="20" step="0.5"></label>
         <label>Zonas de interferencia por escenario<input type="number" name="n_fallas" value="3" min="1" max="10"></label>
         <label>Escenarios para las métricas<input type="number" name="n_escenarios" value="30" min="5" max="100" step="5"></label>
-        <p class="ayuda">Usa el origen y el destino marcados; si no hay, la misión completa (inicio, 3 puntos de
-          observación y destino). Las preferencias son las de la sección 2.</p>
+        <fieldset class="puntos">
+          <legend>Puntos de observación</legend>
+          <p class="ayuda">La flota siempre los recorre en orden. Marcar origen y destino cambia de dónde sale y
+            a dónde llega, no la inspección. Arrastra un punto para moverlo o pulsa sobre él para quitarlo.</p>
+          <div class="botones">
+            <button type="button" id="btn-anadir-punto" class="secundario">Añadir punto</button>
+            <button type="button" id="btn-restaurar-puntos" class="secundario">Restaurar la misión</button>
+          </div>
+          <p class="ayuda" id="txt-secuencia"></p>
+        </fieldset>
+        <p class="ayuda">Las preferencias son las de la sección 2.</p>
         <div class="botones"><button type="submit" id="btn-flota">Simular flota</button></div>
       </form>
       <p class="ayuda" id="txt-flota"></p>

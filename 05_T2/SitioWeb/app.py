@@ -87,9 +87,15 @@ class SolicitudRutas(BaseModel):
 
 
 class SolicitudFlota(BaseModel):
-    """Sin origen y destino se usa la misión completa de la BD (inicio, puntos de observación, destino)."""
+    """Secuencia simulada: origen, puntos de observación y destino.
+
+    Cada parte que no se envía se toma de la misión de la BD, así que la flota **siempre** recorre
+    puntos de observación: marcar origen y destino cambia de dónde sale y a dónde llega, no la
+    inspección. Para cambiar los puntos intermedios se envía `puntos`; una lista vacía los quita.
+    """
     origen: Punto | None = None
     destino: Punto | None = None
+    puntos: list[Punto] | None = Field(None, max_length=8)
     preferencias: PreferenciasEntrada = PreferenciasEntrada()
     n_uav: int = Field(4, ge=3, le=5)
     separacion_km: float = Field(1.0, ge=0.1, le=5)
@@ -158,19 +164,43 @@ def rutas(solicitud: SolicitudRutas):
     return resultado
 
 
+def _secuencia_flota(conn, solicitud: SolicitudFlota) -> list[int]:
+    """Origen, puntos de observación y destino; lo que no venga en la solicitud lo pone la misión.
+
+    Así, marcar origen y destino nunca borra la inspección: la flota sigue pasando por los puntos
+    intermedios. Dos marcas que caen sobre el mismo nodo del grafo se colapsan en una.
+    """
+    mision = mision_bd(conn)
+    if len(mision) < 2:
+        raise HTTPException(422, "La misión de la base de datos no tiene inicio y destino.")
+    nodo = lambda p: nodo_mas_cercano(conn, p.lat, p.lon)
+    inicio = nodo(solicitud.origen) if solicitud.origen else mision[0]
+    fin = nodo(solicitud.destino) if solicitud.destino else mision[-1]
+    medios = [nodo(p) for p in solicitud.puntos] if solicitud.puntos is not None else mision[1:-1]
+
+    secuencia: list[int] = []
+    for n in [inicio, *medios, fin]:
+        if not secuencia or secuencia[-1] != n:  # marcas contiguas sobre el mismo nodo
+            secuencia.append(n)
+    if len(secuencia) < 2:
+        raise HTTPException(422, "El origen y el destino caen sobre el mismo nodo: sepáralos más.")
+    if len(set(secuencia)) != len(secuencia):
+        raise HTTPException(422, "Dos puntos de la misión caen sobre el mismo nodo del grafo; "
+                                 "muévelos o quita uno.")
+    return secuencia
+
+
 @app.post("/api/flota")
 def flota(solicitud: SolicitudFlota):
     prefs = _preferencias(solicitud.preferencias)
     params = ParametrosFlota(n_uav=solicitud.n_uav, separacion_km=solicitud.separacion_km,
                              alcance_com_km=solicitud.alcance_com_km, prob_deteccion=solicitud.prob_deteccion)
     with conectar() as conn:
-        if solicitud.origen and solicitud.destino:
-            secuencia = [nodo_mas_cercano(conn, solicitud.origen.lat, solicitud.origen.lon),
-                         nodo_mas_cercano(conn, solicitud.destino.lat, solicitud.destino.lon)]
-        else:
-            secuencia = mision_bd(conn)
+        secuencia = _secuencia_flota(conn, solicitud)
+        editada = secuencia != mision_bd(conn)
         resultado = simular_flota(conn, secuencia, prefs, params, n_fallas=solicitud.n_fallas,
                                   n_escenarios=solicitud.n_escenarios, semilla=solicitud.semilla)
     if "error" in resultado:
         raise HTTPException(422, resultado["error"])
+    resultado["secuencia_editada"] = editada
     return resultado

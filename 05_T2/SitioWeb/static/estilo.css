@@ -93,6 +93,15 @@ select { padding: 5px 6px; border: 1px solid var(--borde); border-radius: 5px; f
 #bitacora .t { color: var(--tenue); font-variant-numeric: tabular-nums; }
 .etiqueta-uav { background: transparent; border: 0; box-shadow: none; color: #fff; font-weight: 700; font-size: 11px; }
 .etiqueta-uav::before { display: none; }
+/* Puntos de observación editables de la flota */
+fieldset.puntos { border: 1px solid var(--borde); border-radius: 6px; padding: 6px 10px 10px; margin: 10px 0; }
+fieldset.puntos legend { font-size: 12.5px; font-weight: 600; padding: 0 4px; }
+button.activo { background: var(--acento); color: #fff; }
+.punto-obs { display: block; width: 16px; height: 16px; border-radius: 50%; cursor: pointer;
+  background: #fde047; border: 2px solid #111827; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
+.punto-obs:hover { background: #fca5a5; }
+.etiqueta-punto { background: transparent; border: 0; box-shadow: none; color: #111827; font-weight: 700; font-size: 11px; }
+.etiqueta-punto::before { display: none; }
 .difs { padding-left: 18px; font-size: 12.5px; }
 .difs .pos { color: #15803d; }
 .difs .neg { color: #b91c1c; }

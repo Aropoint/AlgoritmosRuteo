@@ -76,7 +76,7 @@ const CAPAS = {
   },
 };
 
-const estado = { origen: null, destino: null, mision: null, defecto: null };
+const estado = { origen: null, destino: null, mision: null, defecto: null, puntos: null };
 
 for (const [clave, def] of Object.entries(CAPAS)) {
   const grupo = L.layerGroup();
@@ -88,7 +88,7 @@ for (const [clave, def] of Object.entries(CAPAS)) {
     cargada = true;
     try {
       const geo = await pedir(`/api/capas/${clave}`);
-      if (clave === 'mision') estado.mision = geo;
+      if (clave === 'mision') { estado.mision = geo; restaurarPuntos(); }
       const opciones = { onEachFeature: (f, l) => l.bindPopup(popup(f.properties)) };
       if (def.style) opciones.style = def.style;
       if (def.pointToLayer) opciones.pointToLayer = def.pointToLayer;
@@ -129,6 +129,7 @@ function fijar(tipo, latlng) {
   marcadores[tipo] = L.circleMarker(latlng, { radius: 9, color: '#fff', weight: 2, fillColor: COLOR[tipo], fillOpacity: 1 })
     .bindTooltip(tipo === 'origen' ? 'Origen' : 'Destino').addTo(mapa);
   $(`txt-${tipo}`).textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+  describirSecuencia();
 }
 
 function quitar(tipo) {
@@ -136,9 +137,14 @@ function quitar(tipo) {
   if (marcadores[tipo]) marcadores[tipo].remove();
   marcadores[tipo] = null;
   $(`txt-${tipo}`).textContent = 'sin definir';
+  describirSecuencia();
 }
 
 mapa.on('click', (e) => {
+  if (modoAnadir) {
+    anadirPunto(e.latlng);
+    return;
+  }
   if (!estado.origen || estado.destino) {
     quitar('destino');
     fijar('origen', e.latlng);
@@ -149,18 +155,83 @@ mapa.on('click', (e) => {
 
 $('btn-limpiar').addEventListener('click', () => { quitar('origen'); quitar('destino'); capaCalculadas.clearLayers(); });
 
+function ordenarMision() {
+  if (!estado.mision) return [];
+  return estado.mision.features.slice().sort((a, b) => a.properties.orden - b.properties.orden)
+    .map((f) => ({ lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], rol: f.properties.rol }));
+}
+
 $('btn-mision').addEventListener('click', async () => {
   try {
-    const geo = estado.mision || await pedir('/api/capas/mision');
-    const puntos = geo.features.slice().sort((a, b) => a.properties.orden - b.properties.orden);
+    if (!estado.mision) estado.mision = await pedir('/api/capas/mision');
+    const puntos = ordenarMision();
     if (puntos.length < 2) throw new Error('La misión no tiene inicio y destino.');
-    const ll = (f) => L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]);
-    fijar('origen', ll(puntos[0]));
-    fijar('destino', ll(puntos[puntos.length - 1]));
+    fijar('origen', L.latLng(puntos[0].lat, puntos[0].lon));
+    fijar('destino', L.latLng(puntos[puntos.length - 1].lat, puntos[puntos.length - 1].lon));
+    restaurarPuntos();  // el origen y el destino de la misión no sustituyen a los puntos de observación
   } catch (e) {
     mostrarEstado(`No se pudo leer la misión: ${e.message}`, true);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Puntos de observación de la flota: se pueden mover, quitar y añadir
+// ---------------------------------------------------------------------------
+const capaPuntos = L.layerGroup().addTo(mapa);
+let modoAnadir = false;
+
+function dibujarPuntos() {
+  capaPuntos.clearLayers();
+  (estado.puntos || []).forEach((p, i) => {
+    const icono = L.divIcon({ className: '', iconSize: [16, 16], iconAnchor: [8, 8],
+      html: `<span class="punto-obs" title="Punto de observación ${i + 1}: arrastra para moverlo, pulsa para quitarlo"></span>` });
+    const m = L.marker([p.lat, p.lon], { draggable: true, icon: icono, zIndexOffset: 500 })
+      .bindTooltip(`P${i + 1}`, { permanent: true, direction: 'top', className: 'etiqueta-punto' })
+      .addTo(capaPuntos);
+    m.on('dragend', () => {
+      const ll = m.getLatLng();
+      estado.puntos[i] = { lat: ll.lat, lon: ll.lng };
+      describirSecuencia();
+    });
+    m.on('click', (ev) => {
+      L.DomEvent.stop(ev);  // si no, el mapa lo toma como clic de origen o destino
+      estado.puntos.splice(i, 1);
+      dibujarPuntos();
+    });
+  });
+  describirSecuencia();
+}
+
+function restaurarPuntos() {
+  estado.puntos = ordenarMision().slice(1, -1).map((p) => ({ lat: p.lat, lon: p.lon }));
+  dibujarPuntos();
+}
+
+function anadirPunto(latlng) {
+  (estado.puntos = estado.puntos || []).push({ lat: latlng.lat, lon: latlng.lng });
+  modoAnadir = false;
+  $('btn-anadir-punto').classList.remove('activo');
+  $('btn-anadir-punto').textContent = 'Añadir punto';
+  dibujarPuntos();
+}
+
+function describirSecuencia() {
+  const n = (estado.puntos || []).length;
+  const origen = estado.origen ? 'el origen marcado' : 'el inicio de la misión';
+  const destino = estado.destino ? 'el destino marcado' : 'el destino de la misión';
+  const medio = n ? `${n} punto${n === 1 ? '' : 's'} de observación` : 'ningún punto intermedio';
+  $('txt-secuencia').textContent = `Se simulará: ${origen} → ${medio} → ${destino}.`
+    + (n ? '' : ' Sin puntos intermedios la flota vuela directo y la misión deja de ser una inspección.');
+}
+
+$('btn-anadir-punto').addEventListener('click', () => {
+  modoAnadir = !modoAnadir;
+  const b = $('btn-anadir-punto');
+  b.classList.toggle('activo', modoAnadir);
+  b.textContent = modoAnadir ? 'Pulsa en el mapa…' : 'Añadir punto';
+});
+
+$('btn-restaurar-puntos').addEventListener('click', restaurarPuntos);
 
 // ---------------------------------------------------------------------------
 // Preferencias
@@ -503,7 +574,10 @@ function mostrarFlota(res) {
       + `<span class="ayuda">(gana ${esc(d.solo_metodo_completa)}, pierde ${esc(d.solo_referencia_completa)}; `
       + `McNemar p = ${num(d.p_mcnemar, 4)})</span></li>`;
   });
-  const avisos = (res.advertencias || []).map((a) => `<div class="aviso">${esc(a)}</div>`).join('');
+  const avisos = (res.advertencias || []).map((a) => `<div class="aviso">${esc(a)}</div>`).join('')
+    // Una misión editada no es comparable con las cifras publicadas en resultados/.
+    + (res.secuencia_editada ? '<div class="aviso">Misión editada: estas cifras no son comparables con las'
+      + ` del informe, que usan la misión de la base de datos. Secuencia simulada: ${esc((res.secuencia || []).join(' → '))}.</div>` : '');
   const ej = res.escenario_animado || {};
   $('contenido-flota').innerHTML = `
     ${avisos}
@@ -533,10 +607,10 @@ $('form-flota').addEventListener('submit', async (ev) => {
     n_fallas: Number(f.elements.n_fallas.value) || 3,
     n_escenarios: Number(f.elements.n_escenarios.value) || 30,
   };
-  if (estado.origen && estado.destino) {
-    cuerpo.origen = estado.origen;
-    cuerpo.destino = estado.destino;
-  }
+  // Origen, destino y puntos son independientes: lo que no se marque lo pone la misión de la BD.
+  if (estado.origen) cuerpo.origen = estado.origen;
+  if (estado.destino) cuerpo.destino = estado.destino;
+  if (estado.puntos) cuerpo.puntos = estado.puntos;
   const boton = $('btn-flota');
   boton.disabled = true;
   pausar();
