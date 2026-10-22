@@ -15,6 +15,7 @@ from statistics import mean
 
 from .algoritmos import Ruta
 from .fallas import Escenario
+from .flota import ResultadoFlota, km_a_s
 from .simulador import ResultadoMision
 
 
@@ -81,3 +82,60 @@ def diferencial(resultados: dict[str, list[ResultadoMision]], metodo: str, refer
         "km_extra_medio_pareado": round(mean(a.km - b.km for a, b in ambos), 3) if ambos else None,
         "km_extra_relativo_minimo": round(mean(a.km - b.km for a, b in ambos) / largo_minimo_km, 4) if ambos else None,
     }
+
+
+# ---------------------------------------------------------------- flota (ruteo/flota.py)
+#
+# R_uav        = misiones de UAV completadas / misiones de UAV (todos los UAV de todos los escenarios)
+# R_seguidores = lo mismo, solo para los UAV 2..N: son los que pueden aprovechar un aviso
+# R_flota      = escenarios en que al menos un UAV completa la inspección
+# La prueba de McNemar se aplica sobre pares (escenario, UAV); los UAV de un mismo
+# escenario no son independientes, así que el p-valor es orientativo.
+
+
+def seguidores(resultados: dict[str, list[ResultadoFlota]]) -> dict[str, list[ResultadoMision]]:
+    return {k: [u for r in v for u in r.uavs if u.indice > 0] for k, v in resultados.items()}
+
+
+def todos_los_uav(resultados: dict[str, list[ResultadoFlota]]) -> dict[str, list[ResultadoMision]]:
+    return {k: [u for r in v for u in r.uavs] for k, v in resultados.items()}
+
+
+def resumir_flota(resultados: dict[str, list[ResultadoFlota]], largo_minimo_km: float,
+                  velocidad_m_s: float) -> dict:
+    salida = {}
+    for nombre, lista in resultados.items():
+        uavs = [u for r in lista for u in r.uavs]
+        lideres = [u for u in uavs if u.indice == 0]
+        resto = [u for u in uavs if u.indice > 0]
+        exitosas = [u for u in uavs if u.exito]
+        motivos: dict[str, int] = {}
+        for u in uavs:
+            if not u.exito:
+                motivos[u.motivo] = motivos.get(u.motivo, 0) + 1
+        # Demora desde el evento (detección o pérdida del UAV) hasta que cada otro UAV se entera.
+        demoras = [km_a_s(t - a.t_evento_km, velocidad_m_s)
+                   for r in lista for a in r.avisos for i, t in a.recepciones.items() if i != a.origen]
+        por_tipo = {tipo: [km_a_s(t - a.t_evento_km, velocidad_m_s) for r in lista for a in r.avisos
+                           if a.tipo == tipo for i, t in a.recepciones.items() if i != a.origen]
+                    for tipo in ("deteccion", "silencio")}
+        salida[nombre] = {
+            "n_escenarios": len(lista),
+            "R_uav": round(tasa([u.exito for u in uavs]), 4),
+            "R_lider": round(tasa([u.exito for u in lideres]), 4),
+            "R_seguidores": round(tasa([u.exito for u in resto]), 4),
+            "R_flota_alguno": round(tasa([r.completadas > 0 for r in lista]), 4),
+            "R_flota_todos": round(tasa([r.completadas == len(r.uavs) for r in lista]), 4),
+            "perdidos_media": round(mean(r.perdidos for r in lista), 3),
+            "avisos_media": round(mean(len(r.avisos) for r in lista), 3),
+            "replan_por_aviso_media": round(mean(u.replan_por_aviso for u in uavs), 3),
+            "replanificaciones_media": round(mean(u.replanificaciones for u in uavs), 3),
+            "demora_aviso_media_s": round(mean(demoras), 2) if demoras else None,
+            "demora_por_tipo_media_s": {k: round(mean(v), 2) if v else None for k, v in por_tipo.items()},
+            "recepciones_inmediatas": round(tasa([d == 0 for d in demoras]), 4) if demoras else None,
+            "km_medio_exitosas": round(mean(u.km for u in exitosas), 3) if exitosas else None,
+            "sobrelongitud_media_exitosas": round(mean(u.km / largo_minimo_km - 1 for u in exitosas), 4) if exitosas else None,
+            "tiempo_calculo_ms_medio": round(mean(u.tiempo_calculo_ms for u in uavs), 2) if uavs else None,
+            "motivos_fallo": motivos,
+        }
+    return salida

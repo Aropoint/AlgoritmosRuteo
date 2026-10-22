@@ -1,4 +1,4 @@
-"""Servicio de ruteo: lo usan el sitio web (POST /api/rutas) y BD/rutas_ejemplo.py.
+"""Servicio de ruteo: lo usan el sitio web (POST /api/rutas, POST /api/flota) y BD/rutas_ejemplo.py.
 
 Dado (origen, destino) y las preferencias del usuario (o las por defecto):
 1. Reconstruye el grafo desde la BD y aplica las restricciones duras.
@@ -6,18 +6,25 @@ Dado (origen, destino) y las preferencias del usuario (o las por defecto):
 3. Propuesta: pgr_KSP + selección resiliente del par (rúbrica 9).
 4. Resiliencia de ambos pares sobre N escenarios de fallas y su diferencial (rúbrica 10 y 11.2).
 5. Si guardar=True, deja las rutas y la evaluación en las tablas rutas y evaluaciones.
+
+simular_flota: la misma misión con 3 a 5 UAV, sin aviso y con aviso compartido (ruteo/flota.py),
+más la línea de tiempo de un escenario para animarlo en el mapa.
 """
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from psycopg.types.json import Jsonb
 
 from comun.resiliencia import evaluar, focos_bd
 from comun.rutas import (dijkstra_dos_rutas_pgr, elevacion_nodo, grafo_desde_bd, guardar_ruta,
                          propuesta_pgr, ruta_a_dict, viento_bd)
-from ruteo.config import ParametrosAlgoritmo, Preferencias
+from ruteo.config import SEMILLAS, Configuracion, ParametrosAlgoritmo, ParametrosFallas, ParametrosFlota, Preferencias
+from ruteo.fallas import generar_escenario
+from ruteo.flota import ESTRATEGIAS_FLOTA, ejecutar_flota, linea_de_tiempo
+from ruteo.metricas import diferencial, resumir_flota, seguidores
 from ruteo.pesos import aristas_excluidas, costo_km, costo_propuesta, mision_admisible
+from ruteo.simulador import largo_minimo_mision
 
 
 def nodo_mas_cercano(conn, lat: float, lon: float) -> int:
@@ -97,6 +104,7 @@ def resolver(conn, s: int, t: int, prefs: Preferencias = Preferencias(),
     return salida
 
 
+<<<<<<< HEAD
 def resolver_mision(conn, secuencia: list[int], prefs: Preferencias = Preferencias(),
                    params: ParametrosAlgoritmo = ParametrosAlgoritmo(),
                    n_escenarios: int = 100, n_fallas: int = 3, guardar: bool = True) -> dict:
@@ -172,4 +180,82 @@ def resolver_mision(conn, secuencia: list[int], prefs: Preferencias = Preferenci
                     "preferencias": salida["preferencias"], "origen_focos": origen_focos})),
         ).fetchone()[0]
         conn.commit()
+=======
+def mision_bd(conn) -> list[int]:
+    return [fila[0] for fila in conn.execute("SELECT nodo_id FROM mision ORDER BY orden")]
+
+
+def simular_flota(conn, secuencia: list[int], prefs: Preferencias = Preferencias(),
+                  flota: ParametrosFlota = ParametrosFlota(), n_fallas: int = 3, n_escenarios: int = 30,
+                  semilla: int | None = None, sin_aviso: str = "D", con_aviso: str = "C_A") -> dict:
+    """Compara la flota sin aviso y con aviso en N escenarios y devuelve uno animable.
+
+    Si no se pide una semilla, se anima el primer escenario en que el aviso cambió alguna ruta en
+    vuelo y la flota con aviso completó más misiones; el sitio lo rotula como elegido para ilustrar.
+    """
+    if len(set(secuencia)) != len(secuencia):
+        return {"error": "La misión repite nodos (origen y destino iguales)."}
+    g = grafo_desde_bd(conn, elevacion_nodo(conn, secuencia[0]))
+    if any(n not in g.nodos for n in secuencia):
+        return {"error": "Algún punto de la misión está fuera del grafo."}
+    viento, viento_info = viento_bd(conn, prefs.altura_vuelo_m)
+    excluidas = aristas_excluidas(g, prefs)
+    largo_min = largo_minimo_mision(g, secuencia, excluidas)
+    if largo_min is None:
+        return {"error": "No hay ruta admisible para la misión con estas restricciones."}
+    presupuesto = (1 + prefs.presupuesto_extra) * largo_min
+    cfg = Configuracion(preferencias=prefs, fallas=replace(ParametrosFallas(), n_fallas=n_fallas), flota=flota)
+    focos, origen_focos = focos_bd(conn, g)
+
+    claves = [sin_aviso, "D_A", con_aviso] if con_aviso != "D_A" else [sin_aviso, con_aviso]
+    nombres = {k: ESTRATEGIAS_FLOTA[k][2] for k in claves}
+    resultados = {nombres[k]: [] for k in claves}
+    escenarios = []
+    for s in list(SEMILLAS["sitio"])[:n_escenarios]:
+        esc = generar_escenario(g, focos, cfg.fallas, largo_min, secuencia, s)
+        escenarios.append(esc)
+        for k in claves:
+            resultados[nombres[k]].append(ejecutar_flota(g, cfg, secuencia, esc, k, presupuesto, viento))
+
+    sin, con = resultados[nombres[sin_aviso]], resultados[nombres[con_aviso]]
+    if semilla is None:
+        idx = next((i for i, (a, b) in enumerate(zip(sin, con))
+                    if b.completadas > a.completadas and any(u.replan_por_aviso for u in b.uavs)),
+                   next((i for i, b in enumerate(con) if any(u.replan_por_aviso for u in b.uavs)), 0))
+        esc, r_sin, r_con = escenarios[idx], sin[idx], con[idx]
+        motivo = "elegido para ilustrar el aviso" if any(u.replan_por_aviso for u in r_con.uavs) else "primero del conjunto"
+    else:
+        esc = generar_escenario(g, focos, cfg.fallas, largo_min, secuencia, semilla)
+        r_sin = ejecutar_flota(g, cfg, secuencia, esc, sin_aviso, presupuesto, viento)
+        r_con = ejecutar_flota(g, cfg, secuencia, esc, con_aviso, presupuesto, viento)
+        motivo = "pedido"
+
+    por_seguidor = seguidores(resultados)
+    comparaciones = [(con_aviso, sin_aviso), ("D_A", sin_aviso), (con_aviso, "D_A")]
+    v = prefs.velocidad_crucero_m_s
+    salida = {
+        "secuencia": secuencia,
+        "preferencias": asdict(prefs),
+        "flota": asdict(flota),
+        "n_fallas": n_fallas,
+        "viento": viento_info,
+        "aristas_excluidas": len(excluidas),
+        "largo_minimo_km": round(largo_min, 3),
+        "presupuesto_km": round(presupuesto, 3),
+        "origen_focos": origen_focos,
+        "n_focos": len(focos),
+        "n_escenarios": len(escenarios),
+        "resumen": resumir_flota(resultados, largo_min, v),
+        "diferenciales_seguidores": [diferencial(por_seguidor, nombres[m], nombres[r], largo_min)
+                                     for m, r in comparaciones if m in nombres and r in nombres and m != r],
+        "escenario_animado": {"semilla": esc.semilla, "motivo": motivo},
+        "radio_silencio_km": cfg.algoritmo.radio_incertidumbre_km,
+        "animacion": {"sin_aviso": linea_de_tiempo(g, r_sin, esc, v), "con_aviso": linea_de_tiempo(g, r_con, esc, v)},
+        "advertencias": [],
+    }
+    if not mision_admisible(viento, prefs):
+        salida["advertencias"].append(
+            f"Misión no admisible: viento de {viento.velocidad_m_s} m/s supera el máximo de {prefs.viento_max_m_s} m/s. "
+            "La simulación se muestra solo como referencia.")
+>>>>>>> flota
     return salida

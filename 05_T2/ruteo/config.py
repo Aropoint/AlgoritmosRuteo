@@ -75,6 +75,19 @@ class ParametrosFallas:
     n_eventos_historicos: int = 60  # eventos usados SOLO para estimar pesos de riesgo
 
 
+@dataclass(frozen=True)
+class ParametrosFlota:
+    """Flota con aviso compartido (ruteo/flota.py). Supuestos de simulación, no de un UAV real."""
+    n_uav: int = 4                      # 3 a 5 UAV sobre la misma misión
+    separacion_km: float = 1.0          # entre lanzamientos, en km a velocidad de crucero (≈ 83 s a 12 m/s)
+    alcance_com_km: float | None = 3.0  # alcance de radio UAV-UAV; el aviso se retransmite por la flota. None = sin límite
+    intervalo_beacon_s: float = 2.0     # cada UAV emite un "sigo vivo" periódico
+    beacons_para_alerta: int = 3        # beacons perdidos seguidos para declarar silencio
+    # Prob. de notar la interferencia en el borde, antes de entrar. Con 1 cada UAV esquiva solo y el
+    # aviso únicamente ahorra km; con 0 la zona solo se conoce por el silencio de quien entró. Se barre {0, 0.5, 1}.
+    prob_deteccion: float = 0.5
+
+
 @dataclass
 class Configuracion:
     malla: ParametrosMalla = field(default_factory=ParametrosMalla)
@@ -82,6 +95,7 @@ class Configuracion:
     preferencias: Preferencias = field(default_factory=Preferencias)
     algoritmo: ParametrosAlgoritmo = field(default_factory=ParametrosAlgoritmo)
     fallas: ParametrosFallas = field(default_factory=ParametrosFallas)
+    flota: ParametrosFlota = field(default_factory=ParametrosFlota)
 
     def a_dict(self) -> dict:
         return asdict(self)
