@@ -1,8 +1,9 @@
-# Tarea 2: base de datos (PostgreSQL + PostGIS + pgRouting), tareas ETL y sitio web.
-# Lo usa main.py (raíz). A mano:
-#   docker compose up -d --wait db                     # base de datos
-#   docker compose run --rm app python pipeline.py     # ETL, cargas, pesos, rutas y diagrama
-#   docker compose up -d web                           # sitio en http://localhost:8000
+# Tarea 2: todo se ejecuta con Docker Compose; Python solo corre dentro de los contenedores.
+#   docker compose up --build            # BD + main.py (descarga, carga, pesos, rutas, diagrama) + sitio
+#   docker compose run --rm pruebas      # pruebas unitarias
+#   docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste
+#   docker compose exec db psql -U postgres -d ruteo_uav
+#   docker compose down                  # detiene; los datos de la BD se conservan (volumen db_data)
 name: ruteo-uav
 
 x-app: &app
@@ -11,12 +12,12 @@ x-app: &app
   env_file:
     - path: .env
       required: false
-  environment:
+  environment: &app-env
     PGHOST: db
     PGPORT: "5432"
     PGDATABASE: ${POSTGRES_DB:-ruteo_uav}
     PGUSER: ${POSTGRES_USER:-postgres}
-    PGPASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+    PGPASSWORD: ${POSTGRES_PASSWORD:-ruteo_uav_local}
   volumes:
     - ./05_T2:/app
   depends_on:
@@ -24,15 +25,14 @@ x-app: &app
       condition: service_healthy
 
 services:
+  # La BD solo es accesible desde la red interna de Compose (no se publica en el equipo).
   db:
     image: pgrouting/pgrouting:17-3.5-3.8.0
     container_name: ruteo_uav_db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ruteo_uav}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ruteo_uav_local}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -41,17 +41,32 @@ services:
       timeout: 5s
       retries: 20
 
-  # Tareas por lotes (pipeline.py, pruebas). No queda corriendo: se usa con `docker compose run`.
+  # main.py (raíz): pipeline completo y después el sitio web en este mismo contenedor.
+  main:
+    <<: *app
+    container_name: ruteo_uav_main
+    command: ["python", "/opt/main.py"]
+    environment:
+      <<: *app-env
+      SIN_DESCARGA: ${SIN_DESCARGA:-0}
+      SOLO_SITIO: ${SOLO_SITIO:-0}
+      WEB_PORT: ${WEB_PORT:-8000}
+    volumes:
+      - ./05_T2:/app
+      - ./main.py:/opt/main.py:ro
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+
+  # Pruebas unitarias: docker compose run --rm pruebas
+  pruebas:
+    <<: *app
+    profiles: ["pruebas"]
+    command: ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]
+
+  # Comandos sueltos (experimentos, un script del ETL): docker compose run --rm app python ...
   app:
     <<: *app
     profiles: ["tareas"]
-
-  web:
-    <<: *app
-    container_name: ruteo_uav_web
-    command: ["uvicorn", "SitioWeb.app:app", "--host", "0.0.0.0", "--port", "8000"]
-    ports:
-      - "${WEB_PORT:-8000}:8000"
 
 volumes:
   db_data:

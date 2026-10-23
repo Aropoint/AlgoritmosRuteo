@@ -241,11 +241,13 @@ como atributo, el modelo es \emph{2,5D}: comprueba el margen vertical de
 forma aproximada, sin buscar trayectorias con ascensos, descensos o
 maniobras tridimensionales.
 
-El archivo raíz \texttt{main.py} coordina Docker y \texttt{pipeline.py}:
-se crea el esquema, se carga el grafo generado en JSON, se descargan y
-transforman las fuentes externas, se asignan atributos y puntajes a las
-aristas y se calculan rutas de ejemplo, tras lo cual se generan el
-diagrama y el sitio Leaflet. Cada JSON de entrada cuenta con un documento
+Todo se ejecuta con \texttt{docker compose up}, de modo que Python solo
+corre dentro de los contenedores: el servicio \texttt{db} aloja la base y
+el servicio \texttt{main} ejecuta el archivo raíz \texttt{main.py}, que llama
+a \texttt{pipeline.py}. Se crea el esquema, se carga el grafo generado en
+JSON, se descargan y transforman las fuentes externas, se asignan atributos
+y puntajes a las aristas y se calculan rutas de ejemplo y el diagrama; al
+terminar, el mismo \texttt{main.py} levanta el sitio Leaflet. Cada JSON de entrada cuenta con un documento
 \texttt{ESTRUCTURA\_*.md} que explica sus campos y con un cargador
 asociado; la arquitectura y las consultas se detallan en
 \texttt{BD/MODELO\_BD.md}. Esta cadena prepara el experimento, cuyo objeto
@@ -734,7 +736,7 @@ forma parcial; además, proviene del conjunto de ajuste y no de la evaluación
 reservada, de modo que no basta para dar por confirmada la hipótesis
 principal.
 
-La ejecución completa de \texttt{main.py} en Docker termina con sus 18 pasos
+La ejecución completa con \texttt{docker compose up} termina con sus 18 pasos
 correctos y permite comprobar el esquema, las consultas de pgRouting y las
 seis extracciones; la última verificación, con descarga completa desde cero,
 se hizo el 22 de octubre de 2026. Su bitácora documenta 33\,630 edificios OSM

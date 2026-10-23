@@ -1,4 +1,4 @@
-"""Pipeline ETL completo, dentro del contenedor `app` (lo invoca main.py desde la raíz).
+"""Pipeline ETL completo. Lo invoca main.py (raíz) dentro del contenedor `main` de docker compose.
 
 Orden: esquema -> infraestructura -> 3 metadata -> 3 amenazas -> pesos -> rutas de ejemplo -> diagrama.
 Cada fuente externa es opcional: si su descarga falla, el pipeline sigue y el
@@ -71,7 +71,7 @@ def main() -> int:
     fallos = [s for s, e, _ in resumen if e == "FALLÓ"]
     if fallos:
         print("\nLas fuentes que fallaron quedan sin datos (peso o restricción neutros). "
-              "Reintenta con:  python pipeline.py --solo metadata,amenazas,pesos,rutas")
+              "Reintenta con:  docker compose run --rm app python pipeline.py --solo metadata,amenazas,pesos,rutas")
     obligatorios = {s for _, s, _, o in PASOS if o}
     return 1 if any(f in obligatorios for f in fallos) else 0
 

@@ -2,19 +2,21 @@
 
 La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guía indica qué archivo lo cumple y qué mostrar en la diapositiva. Puntaje total: 60.
 
-> **Estado (19 de octubre de 2026):** la ejecución completa con Docker **ya se probó**: `python main.py`
-> terminó con código 0, los 18 pasos del pipeline en `ok` y las seis fuentes externas respondieron.
-> El detalle de los números obtenidos está en [README.md](README.md#estado). Falta capturar las
-> pantallas que pide esta guía y resolver el pendiente de los focos de evaluación (README, §Estado).
+> **Estado (22 de octubre de 2026):** todo se ejecuta con `docker compose up --build` desde la raíz;
+> el equipo solo necesita Docker, porque `main.py` corre dentro del contenedor `main`. La ejecución
+> completa terminó con los 18 pasos del pipeline en `ok` y las seis fuentes externas respondieron.
+> El detalle de los números está en [README.md](README.md#estado). Falta capturar las pantallas
+> que pide esta guía y resolver el pendiente de los focos de evaluación (README, §Estado).
 >
-> Cuidado al preparar la presentación: el paso de Overpass tardó 614 s (el servidor principal
-> devolvió HTTP 502 y respondió el espejo). Conviene correr `python main.py` con antelación y,
-> en la demo, usar `python main.py --sin-descarga` o `--solo-sitio`. El sitio carga Leaflet desde
-> `unpkg` y los *tiles* desde OSM: la demostración necesita internet en el navegador.
+> Cuidado al preparar la presentación: Overpass llegó a tardar 614 s (el servidor principal
+> devolvió HTTP 502 y respondió el espejo). Conviene correr `docker compose up --build` con
+> antelación y, en la demo, usar `SIN_DESCARGA=1` o `SOLO_SITIO=1` (README, §Ejecutar todo). El
+> sitio carga Leaflet desde `unpkg` y los *tiles* desde OSM: la demostración necesita internet en
+> el navegador.
 
 ## Proceso ETL completo (lo que pide el enunciado)
 
-`main.py` (raíz) → Docker Compose → `05_T2/pipeline.py`:
+`docker compose up` → contenedor `main` → `main.py` (raíz) → `05_T2/pipeline.py` y, al terminar, el sitio:
 
 1. **Esquema.** `BD/crear_bd.py` ejecuta `BD/schema.sql` (crea la BD desde cero).
 2. **Infraestructura.** `generar_infraestructura.py` produce el JSON y `cargar_infraestructura.py` lo carga en `nodos`, `aristas` y `mision`.
@@ -23,7 +25,7 @@ La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guí
 5. **Transformación a pesos.** `BD/asignar_pesos.py` ejecuta `BD/pesos.sql`: restricciones y riesgo por arista.
 6. **Rutas de ejemplo.** `BD/rutas_ejemplo.py`: `pgr_dijkstra` y `pgr_KSP` + selección, con su resiliencia.
 7. **Diagrama.** `BD/diagrama_bd.py` genera `BD/diagrama_bd.png`.
-8. **Sitio.** `docker compose up web` → http://localhost:8000.
+8. **Sitio.** El mismo `main.py` levanta FastAPI + Leaflet → http://localhost:8000.
 
 ## Criterio por criterio
 
@@ -53,11 +55,11 @@ No es un criterio aparte de la rúbrica, pero responde la observación de la reu
 
 - **Qué es:** de 3 a 5 UAV hacen la misma misión. El que detecta interferencia avisa a la flota, el aviso se retransmite de UAV en UAV, y los demás cambian de ruta en pleno vuelo. Si un UAV queda dentro de una zona, deja de emitir su beacon y la flota marca esa zona. Ver `ruteo/flota.py` y PROPUESTA_TECNICA §10.
 - **Qué mostrar:** la animación del sitio, en el mismo escenario con aviso y sin aviso. Después, la tabla de PROPUESTA_TECNICA §10. Con `p_det ≤ 0,5`, D_A − D da entre +10 y +17 pp en los seguidores, sin ningún caso perdido. Con `p_det = 1`, el aviso casi no cambia la tasa, y hay que decirlo.
-- **Cómo reproducir:** `python experimentos/run_flota.py --conjunto ajuste` y `python experimentos/run_flota.py --conjunto ajuste --sensibilidad --n-fallas 5`.
+- **Cómo reproducir:** `docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste` y lo mismo con `--sensibilidad --n-fallas 5`.
 
 ## Puntos del enunciado que no son criterios
 
-- **Punto 0.** Imagen del diagrama más el `.sql`: `BD/diagrama_bd.png` (se genera al correr `main.py`) y `BD/schema.sql`.
+- **Punto 0.** Imagen del diagrama más el `.sql`: `BD/diagrama_bd.png` (se genera con `docker compose up`) y `BD/schema.sql`.
 - **Punto 4.** Un documento por cada JSON:
 
   | JSON | Documento |
@@ -71,8 +73,8 @@ No es un criterio aparte de la rúbrica, pero responde la observación de la reu
   | `ucdp_eventos.json` | `Amenazas/ESTRUCTURA_ucdp_eventos_json.md` |
   | `rutas_ejemplo.json` | `BD/ESTRUCTURA_rutas_ejemplo_json.md` |
 
-- **Punto 9.** El `main.py` está en la raíz.
-- **Docker.** Todo corre en contenedores (`db`, `app` y `web`).
+- **Punto 9.** El `main.py` está en la raíz y `docker compose up` lo ejecuta dentro de un contenedor: descarga, carga en la BD y habilitación del sitio.
+- **Docker.** Todo corre en contenedores y el equipo no necesita Python: `db` y `main` con `docker compose up`; `pruebas` y `app` para las pruebas y los comandos sueltos.
 
 ## Advertencias que conviene decir en la presentación
 

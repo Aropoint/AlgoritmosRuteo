@@ -160,7 +160,7 @@ Todas las estrategias usan el mismo grafo admisible, la misma misión, el mismo 
 
 ## 9. Resultados preliminares (conjunto de ajuste, 100 escenarios por celda)
 
-Generados con `python experimentos/run_experimentos.py --conjunto ajuste --sensibilidad` y `--n-fallas 5 --presupuesto {0.1,0.2}`. Columnas `ΔR`: pp (escenarios en que solo gana el método / solo gana la referencia, p de McNemar). Sobrelongitud de las misiones exitosas: C / D / A.
+Generados con `docker compose run --rm app python experimentos/run_experimentos.py --conjunto ajuste --sensibilidad` y `--n-fallas 5 --presupuesto {0.1,0.2}`. Columnas `ΔR`: pp (escenarios en que solo gana el método / solo gana la referencia, p de McNemar). Sobrelongitud de las misiones exitosas: C / D / A.
 
 | prob_foco | n_fallas | β | R_A | R_B | R_D | R_C0 | R_C1 | **R_C** | ΔR C−A | ΔR C−D | sobrelong. C / D / A |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -234,7 +234,7 @@ McNemar se calcula sobre pares (escenario, UAV). Los UAV de un mismo escenario n
 
 ### Resultados preliminares (conjunto de ajuste, 100 escenarios, `prob_foco = 0,5`, β = 0,6)
 
-Generados con `python experimentos/run_flota.py --conjunto ajuste` (primera fila) y `--sensibilidad --n-fallas 5` (resto). Están en `resultados/flota_*.json`. Formato de los ΔR: pp sobre los seguidores, seguidos de (escenario-UAV en que solo gana el método / solo gana la referencia, p).
+Generados con `docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste` (primera fila) y `--sensibilidad --n-fallas 5` (resto). Están en `resultados/flota_*.json`. Formato de los ΔR: pp sobre los seguidores, seguidos de (escenario-UAV en que solo gana el método / solo gana la referencia, p).
 
 | Fallas | p_det | UAV | R_seg D | R_seg D_A | R_seg C_A | ΔR D_A − D | ΔR C_A − D_A | ΔR C_A − D | Perdidos D → C_A |
 |---|---|---|---|---|---|---|---|---|---|

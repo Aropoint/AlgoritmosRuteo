@@ -24,50 +24,44 @@ En el sitio se puede animar un escenario con aviso y sin aviso.
 
 ## Ejecutar todo (Docker)
 
-Requiere Docker Desktop o Docker Engine con Compose v2. Desde la **raíz del repo**:
+Solo requiere Docker Desktop o Docker Engine con Compose v2: **Python corre únicamente dentro de los contenedores**. Desde la **raíz del repo**:
 
 ```bash
-python main.py                  # BD + descarga + carga + pesos + rutas + diagrama + sitio
-python main.py --sin-descarga   # reutiliza los JSON ya generados
-python main.py --solo-sitio     # solo BD y sitio
-python main.py --pruebas        # pruebas unitarias en el contenedor
-python main.py --detener
+docker compose up --build           # BD + main.py: descarga, carga, pesos, rutas, diagrama y sitio
+docker compose up -d --build        # lo mismo, en segundo plano; avance con: docker compose logs -f main
+docker compose down                 # detiene; los datos de la BD se conservan (volumen db_data)
 ```
 
-El sitio queda en **http://localhost:8000**. `main.py` crea `.env` con una contraseña aleatoria si no existe (plantilla en `.env.example`). Las fechas de la ventana de datos también se definen ahí.
+`docker compose up` levanta dos servicios: `db` (PostgreSQL + PostGIS + pgRouting) y `main`, que ejecuta el `main.py` de la raíz: primero el pipeline y después, en el mismo contenedor, el sitio en **http://localhost:8000**. Dos variables cambian lo que hace `main.py`:
 
-Si se prefiere hacerlo a mano:
+| Variable | Efecto |
+|---|---|
+| `SIN_DESCARGA=1` | Reutiliza los JSON ya generados; no llama a las APIs |
+| `SOLO_SITIO=1` | No corre el pipeline: levanta el sitio sobre la BD existente |
+
+Se fijan en `.env` o antes del comando: `SIN_DESCARGA=1 docker compose up` en bash, o `$env:SIN_DESCARGA=1; docker compose up` en PowerShell. Sin `.env`, Compose usa los valores de `.env.example`, incluidas las fechas de la ventana de datos. La BD no se publica fuera de Docker; para consultarla: `docker compose exec db psql -U postgres -d ruteo_uav`.
+
+## Pruebas, experimentos y scripts sueltos (en Docker)
+
+El servicio `pruebas` corre las pruebas y el servicio `app` acepta cualquier comando dentro de `05_T2/`:
 
 ```bash
-docker compose up -d --wait db
-docker compose --profile tareas run --rm app python pipeline.py      # o un script suelto: python Metadata/viento.py
-docker compose up -d web
+docker compose run --rm pruebas                                                          # 36 pruebas del núcleo, la flota y el ETL
+docker compose run --rm app python pipeline.py --solo metadata,amenazas,pesos,rutas     # parte del pipeline
+docker compose run --rm app python experimentos/run_experimentos.py --conjunto ajuste                 # A/B/D/C0/C1/C, ~12 s
+docker compose run --rm app python experimentos/run_experimentos.py --conjunto ajuste --sensibilidad  # prob_foco x n_fallas, ~2 min
+docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste                        # flota con y sin aviso, ~30 s
+docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste --sensibilidad --n-fallas 5   # n_uav x p_det, ~5 min
 ```
 
-## Ejecutar el núcleo sin Docker
-
-El paquete `ruteo/` y los experimentos usan **solo la biblioteca estándar** (Python ≥ 3.10):
-
-```bash
-cd 05_T2
-python -m unittest discover -s tests -v                                   # pruebas del núcleo y del ETL
-python Infraestructura/generar_infraestructura.py                         # -> Infraestructura/salida/infraestructura.json
-python experimentos/run_experimentos.py --conjunto ajuste                 # comparación A/B/D/C0/C1/C, ~12 s
-python experimentos/run_experimentos.py --conjunto ajuste --sensibilidad  # barrido prob_foco x n_fallas, ~2 min
-python experimentos/run_flota.py --conjunto ajuste                        # flota: A, D, C sin aviso vs D_A, C_A con aviso, ~30 s
-python experimentos/run_flota.py --conjunto ajuste --sensibilidad --n-fallas 5   # n_uav {3,4,5} x prob_deteccion {1, 0.5, 0}, ~5 min
-```
-
-> **No ejecutes `--conjunto evaluacion` hasta que el grupo congele los parámetros** (PROPUESTA_TECNICA §8).
-
-En Windows, si la consola muestra mal los acentos: `$env:PYTHONIOENCODING="utf-8"` (PowerShell).
+> **No ejecutes `--conjunto evaluacion` hasta que el grupo congele los parámetros** (PROPUESTA_TECNICA §8). Ojo: es el valor por defecto de ambos scripts, así que `--conjunto ajuste` siempre va explícito.
 
 ## Estructura
 
 ```text
 05_T2/
 ├── Dockerfile, requirements.txt   Imagen de la aplicación (ETL, cargas, sitio)
-├── pipeline.py                    Orden de ejecución del ETL dentro del contenedor (lo llama main.py)
+├── pipeline.py                    Orden de ejecución del ETL (lo llama main.py en el servicio main)
 ├── ruteo/                         Núcleo algorítmico (stdlib): grafo, Dijkstra, Yen, selección, fallas, simulador, flota, métricas
 ├── comun/                         Compartido: ajustes, transformaciones, descargas, BD, rutas pgRouting, resiliencia, servicio
 ├── BD/                            schema.sql, MODELO_BD.md, crear_bd.py, pesos.sql + asignar_pesos.py, rutas_ejemplo.py, diagrama_bd.py
@@ -105,6 +99,7 @@ Ninguna de las seis fuentes externas pide credenciales.
 | **Rutas de ejemplo regeneradas y verificadas** tras el arreglo de los focos (22-oct-2026) | Presentación (guía en ENTREGA_TAREA2.md) y subida a GitLab UDP |
 | **Flota con aviso** (20-oct-2026): simulador, experimento de ajuste, pruebas (36/36 OK) y sección del sitio | |
 | **Verificado en Docker** (22-oct-2026): `python main.py --sin-descarga` con los 18 pasos en `ok`, `POST /api/flota` y `POST /api/rutas` respondiendo, y las seis capas del mapa | |
+| **Solo Docker Compose** (22-oct-2026): `docker compose up --build` corre `main.py` dentro del contenedor `main` (pipeline y luego sitio); el equipo ya no necesita Python | |
 
 **Resultado preliminar de la flota** (ajuste, 4 UAV, 3 fallas, `p_det = 0,5`): con el aviso compartido, los UAV que vienen detrás completan **+10 pp** más misiones con Dijkstra (D_A frente a D: 30 escenario-UAV ganados y 0 perdidos) y **+16 pp** con la propuesta (C_A frente a D). Si la interferencia siempre se nota antes de entrar (`p_det = 1`), el aviso casi no cambia la tasa. Detalle en PROPUESTA_TECNICA §10.
 
@@ -125,7 +120,7 @@ Ninguna de las seis fuentes externas pide credenciales.
 
 Se confirma el resultado preliminar: **C supera a A pero empata con la ablación D.**
 
-Reproducir sin volver a descargar: `python main.py --sin-descarga` (Overpass tardó 614 s y el
+Reproducir sin volver a descargar: `SIN_DESCARGA=1 docker compose up` (Overpass tardó 614 s y el
 servidor principal respondió HTTP 502; el espejo `overpass.kumi.systems` salvó el paso).
 
 ### Hallazgo de la primera corrida: los focos de las fallas salían del período equivocado
@@ -164,7 +159,7 @@ afectados: salen del simulador en Python, con focos sintéticos. Hay que **regen
 ejemplo y su evaluación** antes de presentar:
 
 ```bash
-docker compose --profile tareas run --rm app python BD/rutas_ejemplo.py
+docker compose run --rm app python BD/rutas_ejemplo.py
 ```
 
 Es esperable que ΔR(C−A) cambie: con focos históricos las fallas caían sobre los tramos que el
