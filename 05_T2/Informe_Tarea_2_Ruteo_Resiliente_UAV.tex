@@ -1,19 +1,19 @@
 % Borrador estructurado para la Tarea 2. Compilar desde 05_T2/ para resolver
 % las figuras relativas. Actualizado el 22 de octubre de 2026: incorpora la
-% flota con aviso compartido (seccion VI) y el ejemplo de base de datos
-% regenerado tras corregir la ventana de focos. Falta la corrida del conjunto
-% reservado de evaluacion.
+% flota con aviso compartido (seccion VI), el ejemplo de base de datos
+% regenerado tras corregir la ventana de focos, la auditoria de las fuentes y
+% el trabajo pendiente. Falta la corrida del conjunto reservado de evaluacion.
 \documentclass[journal,10pt]{IEEEtran}
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage[spanish]{babel}
+\usepackage[spanish,es-tabla]{babel}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs,tabularx,array}
 \usepackage{graphicx}
 \usepackage{listings}
 \usepackage{xcolor}
-\usepackage{url}
+\usepackage[hyphens]{url}
 \graphicspath{{BD/}}
 
 \lstdefinestyle{codigo}{
@@ -22,9 +22,19 @@
   frame=single,
   columns=fullflexible,
   showstringspaces=false,
-  backgroundcolor=\color{gray!6}
+  backgroundcolor=\color{gray!6},
+  belowcaptionskip=6pt
 }
 \lstset{style=codigo}
+\renewcommand{\lstlistingname}{Listado}
+% El \@makecaption de IEEEtran no deja espacio bajo el título, y el marco del
+% listado, que se dibuja hacia arriba, tapaba su última línea.
+\makeatletter
+\def\lst@makecaption#1#2{%
+  \vbox{\hsize=\linewidth\normalfont\footnotesize\noindent
+        #1.\nobreakspace\nobreakspace#2}%
+  \vskip\belowcaptionskip}
+\makeatother
 
 \begin{document}
 
@@ -255,11 +265,11 @@ falla sintética definidos más adelante.
 \caption{Fuentes implementadas y traducción al modelo. ``Indicador'' no equivale a falla observada de un UAV.}
 \label{tab:fuentes}
 \footnotesize
-\begin{tabularx}{\textwidth}{@{}p{2.3cm}p{3.2cm}X p{3.2cm}@{}}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{3.2cm}@{}}
 \toprule
 \textbf{Fuente} & \textbf{Dato extraído} & \textbf{Uso implementado} & \textbf{Límite principal} \\
 \midrule
-OSM/Overpass \cite{osm} & Huellas y etiquetas \texttt{height}/\texttt{building:levels} & Altura estimada de edificios próximos al tramo; exclusión si el obstáculo alcanza el margen vertical. & Alturas incompletas; tres metros por nivel es un supuesto. \\
+OSM/Overpass \cite{osm} & Huellas y etiquetas \texttt{height} o \texttt{building:levels} & Altura estimada de edificios próximos al tramo; exclusión si el obstáculo alcanza el margen vertical. & Alturas incompletas; tres metros por nivel es un supuesto. \\
 Open-Meteo Elevation \cite{elev} & Elevación de nodos y puntos medios, Copernicus GLO-90 & Relieve relativo al punto de salida en la regla 2,5D. & Resolución de 90 m y muestreo de tres puntos por arista. \\
 Open-Meteo Historical Weather \cite{meteo} & Serie horaria de viento en un punto & Límite global de viento y factor direccional de costo. & Resolución regional; el script no fija explícitamente el modelo meteorológico en la petición. \\
 GPSJam \cite{gpsjam} & Conteos ADS-B de precisión GNSS por celda H3 & Fracción histórica de días con celda en rojo, usada como indicador regional. & Aviones en altura; no detecta jamming UAV ni tiene detalle por calle. \\
@@ -281,6 +291,7 @@ cuya relación con un bloqueo de vuelo no está demostrada. Ninguna de
 estas fuentes constituye un sensor embarcado en el UAV simulado.
 
 \section{Modelo de restricciones y fallas}
+\label{sec:fallas}
 
 El UAV simulado conserva una altura fija respecto de la elevación del punto
 de partida $A$; para estimar el margen vertical disponible en una arista
@@ -403,8 +414,10 @@ desvío y el presupuesto disponible; cuando ninguna cabe, se conserva la
 mínima para intentar avanzar, aunque la misión pueda fracasar por exceso
 de recorrido. Entre los pares restantes $(p,q)$ se minimiza
 \begin{equation}
- J(p,q)=w_L\!\left(\frac{L(p)+L(q)}{2L_{\min}}-1\right)
-          +w_S S(p,q)+w_R\frac{R(p)+R(q)}{2},
+\begin{aligned}
+ J(p,q)={}&w_L\!\left(\frac{L(p)+L(q)}{2L_{\min}}-1\right)\\
+          &+w_S S(p,q)+w_R\frac{R(p)+R(q)}{2},
+\end{aligned}
 \end{equation}
 donde $L(p)$ y $L(q)$ son las longitudes de las rutas, $L_{\min}$ la longitud
 del camino más corto, $S(p,q)$ el solape espacial y $R(p)$ y $R(q)$ sus
@@ -563,7 +576,7 @@ calculado sobre pares (escenario, UAV) se informa como orientativo.
 
 El presupuesto se fija como $L_{\max}=(1+\beta)L^*$, donde $L^*$ suma las
 distancias mínimas \emph{sin fallas} de los cuatro tramos; con
-$\beta=0,60$ se permite recorrer hasta un 60\% más que ese mínimo para
+$\beta=0{,}60$ se permite recorrer hasta un 60\% más que ese mínimo para
 absorber desvíos, aunque ninguna ruta individual recibe por ello una
 holgura ilimitada. Una misión se considera exitosa solo si visita
 $P_1,P_2,P_3$ en orden, llega a $B$ y no supera $L_{\max}$, por lo que
@@ -617,7 +630,7 @@ separado de las del experimento Python.
 
 El repositorio conserva en \texttt{resultados/} cifras
 \emph{preliminares del conjunto de ajuste}; con la malla y misión por
-defecto, $L^*=13,1637$ km. La Tabla~\ref{tab:resultados} presenta
+defecto, $L^*=13{,}1637$ km. La Tabla~\ref{tab:resultados} presenta
 cuatro configuraciones de 100 escenarios cada una, en las que todos los
 métodos enfrentan las mismas fallas simuladas: $n_f$ indica su número y
 $\beta$ el recorrido adicional permitido. Ningún valor de esta tabla
@@ -640,12 +653,12 @@ $n_f$ & $\beta$ & $A$ & $B$ & $D$ & $C$ \\
 \end{tabular}
 \end{table}
 
-Con cinco fallas y $\beta=0,60$, $C$ completó 97 de 100 misiones frente a
-87 de $A$: son $+10$ puntos porcentuales ($p=0,01294$ en la prueba
+Con cinco fallas y $\beta=0{,}60$, $C$ completó 97 de 100 misiones frente a
+87 de $A$: son $+10$ puntos porcentuales ($p=0{,}01294$ en la prueba
 pareada). Sin embargo, $D$ completó 96, casi lo mismo que $C$ ($+1$ punto;
-$p=1$). Cuando el presupuesto baja a $\beta=0,10$, $C$ queda siete puntos
+$p=1$). Cuando el presupuesto baja a $\beta=0{,}10$, $C$ queda siete puntos
 por debajo de $D$. El par de $C$ tiene mayor $R_{\rm par}$ que el de $A$
-en la configuración de cinco fallas y $\beta=0,60$ (0,94 frente a 0,9075),
+en la configuración de cinco fallas y $\beta=0{,}60$ (0,94 frente a 0,9075),
 lo que indica que sus
 dos rutas precalculadas resisten mejor las fallas simuladas. No demuestra
 que esa selección cause la mayor finalización de misiones: el resultado
@@ -662,24 +675,24 @@ población.
 
 \begin{table}[!t]
 \centering
-\caption{Flota en el conjunto de ajuste: $R_{\rm seguidores}$ y aporte del aviso. Primera fila con tres fallas; el resto, con cinco. Probabilidad de foco 0,5 y $\beta=0,60$.}
+\caption{Flota en el conjunto de ajuste: $R_{\rm seguidores}$ y aporte del aviso. Primera fila con tres fallas; el resto, con cinco. Probabilidad de foco 0,5 y $\beta=0{,}60$.}
 \label{tab:flota}
 \footnotesize
 \begin{tabular}{@{}ccrrrrr@{}}
 \toprule
 $p_{\rm det}$ & $N$ & $D$ & $D_A$ & $C_A$ & $D_A\!-\!D$ & $C_A\!-\!D_A$ \\
 \midrule
-0,5 & 4 & 0,770 & 0,870 & 0,930 & $+10,0$ & $+6,0$ \\
+0,5 & 4 & 0,770 & 0,870 & 0,930 & $+10{,}0$ & $+6{,}0$ \\
 \midrule
-1   & 3 & 0,930 & 0,935 & 0,960 & $+0,5$  & $+2,5$ \\
-1   & 4 & 0,947 & 0,950 & 0,967 & $+0,3$  & $+1,7$ \\
-1   & 5 & 0,955 & 0,958 & 0,965 & $+0,2$  & $+0,8$ \\
-0,5 & 3 & 0,690 & 0,805 & 0,835 & $+11,5$ & $+3,0$ \\
-0,5 & 4 & 0,667 & 0,807 & 0,857 & $+14,0$ & $+5,0$ \\
-0,5 & 5 & 0,637 & 0,807 & 0,873 & $+17,0$ & $+6,5$ \\
-0   & 3 & 0,605 & 0,740 & 0,730 & $+13,5$ & $-1,0$ \\
-0   & 4 & 0,573 & 0,720 & 0,740 & $+14,7$ & $+2,0$ \\
-0   & 5 & 0,542 & 0,705 & 0,740 & $+16,2$ & $+3,5$ \\
+1   & 3 & 0,930 & 0,935 & 0,960 & $+0{,}5$  & $+2{,}5$ \\
+1   & 4 & 0,947 & 0,950 & 0,967 & $+0{,}3$  & $+1{,}7$ \\
+1   & 5 & 0,955 & 0,958 & 0,965 & $+0{,}2$  & $+0{,}8$ \\
+0,5 & 3 & 0,690 & 0,805 & 0,835 & $+11{,}5$ & $+3{,}0$ \\
+0,5 & 4 & 0,667 & 0,807 & 0,857 & $+14{,}0$ & $+5{,}0$ \\
+0,5 & 5 & 0,637 & 0,807 & 0,873 & $+17{,}0$ & $+6{,}5$ \\
+0   & 3 & 0,605 & 0,740 & 0,730 & $+13{,}5$ & $-1{,}0$ \\
+0   & 4 & 0,573 & 0,720 & 0,740 & $+14{,}7$ & $+2{,}0$ \\
+0   & 5 & 0,542 & 0,705 & 0,740 & $+16{,}2$ & $+3{,}5$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -688,41 +701,51 @@ Cuatro lecturas se desprenden de esos números. Primero, \textbf{el aviso
 nunca perjudicó a un seguidor}: en ninguna celda hubo un UAV que completara
 la misión sin aviso y la perdiera con él, de modo que las columnas de
 escenarios discordantes son unilaterales ---por ejemplo, 68 contra 0 con
-$p_{\rm det}=0,5$ y cinco vehículos--- y el $p$ de McNemar queda por debajo
-de $10^{-4}$ en todas las celdas con $p_{\rm det}\leq0,5$. Segundo, el
+$p_{\rm det}=0{,}5$ y cinco vehículos--- y el $p$ de McNemar queda por debajo
+de $10^{-4}$ en todas las celdas con $p_{\rm det}\leq0{,}5$. Segundo, el
 beneficio aparece solo cuando la interferencia no es evidente antes de
-entrar: con $p_{\rm det}=1$ el aviso aporta entre $+0,2$ y $+0,5$ pp, pues
+entrar: con $p_{\rm det}=1$ el aviso aporta entre $+0{,}2$ y $+0{,}5$ pp, pues
 cada UAV esquiva la zona por su cuenta y lo único que ahorra el aviso son
-kilómetros. Tercero, el aporte crece con el tamaño de la flota ---de $+11,5$
-a $+17,0$ pp al pasar de tres a cinco UAV con $p_{\rm det}=0,5$---, lo que
+kilómetros. Tercero, el aporte crece con el tamaño de la flota ---de $+11{,}5$
+a $+17{,}0$ pp al pasar de tres a cinco UAV con $p_{\rm det}=0{,}5$---, lo que
 es coherente con el mecanismo: hay más vehículos detrás que aprovechan el
 mismo aviso. Cuarto, los UAV perdidos por escenario bajan de forma
 consistente, por ejemplo de 1,24 con $D$ a 0,63 con $C_A$ en la celda de
-cuatro vehículos y $p_{\rm det}=0,5$.
+cuatro vehículos y $p_{\rm det}=0{,}5$.
 
 La demora del aviso fue de 0 a 1,8 s por detección ---casi todas las
 recepciones ocurren en el mismo instante, y los retrasos corresponden a
 vehículos que estaban fuera de alcance y lo recibieron al reconectarse--- y
-de 6 s por silencio, que es exactamente el tiempo de declarar tres beacons
-perdidos.
+de 6 s por silencio, el tiempo de declarar tres beacons perdidos. La única
+excepción es $D_A$ con cinco vehículos y $p_{\rm det}=0{,}5$, donde la media
+sube a 6,7 s por el mismo motivo: algún vehículo no estaba en alcance cuando
+se declaró el silencio y recibió el aviso después, por retransmisión.
 
 Conviene subrayar que \textbf{el UAV que se pierde no se salva}: el
 beneficio es íntegramente para los que vienen detrás, y por eso la métrica
 principal excluye al líder. La selección resiliente por encima del aviso
-($C_A-D_A$) suma entre $+5$ y $+6,5$ pp con $p_{\rm det}=0,5$ y resulta
-detectable con tres fallas ($p=0,006$) y con cinco vehículos ($p=0,003$),
-pero no con $p_{\rm det}=0$ ni con $p_{\rm det}=1$. Es el primer escenario
-en que el aporte propio se distingue de la replanificación simple; aun así
-proviene del conjunto de ajuste y no de la evaluación reservada, de modo que
-no basta para dar por confirmada la hipótesis principal.
+($C_A-D_A$) suma entre $+3$ y $+6{,}5$ pp con $p_{\rm det}=0{,}5$, pero solo
+resulta detectable en dos de esas cuatro celdas: con tres fallas ($p=0{,}006$)
+y con cinco fallas y cinco vehículos ($p=0{,}003$). Con tres y cuatro vehículos
+no lo es ($+3{,}0$ pp, $p=0{,}42$; $+5{,}0$ pp, $p=0{,}058$), y tampoco con
+$p_{\rm det}=0$ ni con $p_{\rm det}=1$. Es el primer escenario en que el
+aporte propio llega a distinguirse de la replanificación simple, aunque de
+forma parcial; además, proviene del conjunto de ajuste y no de la evaluación
+reservada, de modo que no basta para dar por confirmada la hipótesis
+principal.
 
 La ejecución completa de \texttt{main.py} en Docker termina con sus 18 pasos
 correctos y permite comprobar el esquema, las consultas de pgRouting y las
-seis extracciones; la última verificación se hizo el 22 de octubre de 2026.
-Su bitácora documenta 33\,593 edificios OSM (1\,022 con altura estimada),
-814 muestras de elevación, 720 horas de viento, siete celdas GPSJam, 41
-focos térmicos clasificados y 65 eventos UCDP. Estos números describen
-\emph{registros extraídos o cargados}, no fallas sufridas por UAV. Las
+seis extracciones; la última verificación, con descarga completa desde cero,
+se hizo el 22 de octubre de 2026. Su bitácora documenta 33\,630 edificios OSM
+(1\,019 con altura estimada), 814 muestras de elevación, 720 horas de viento,
+siete celdas GPSJam, 41 focos térmicos clasificados y 65 eventos UCDP. Las
+otras cinco fuentes son estáticas o se filtran por ventanas de fechas fijas,
+y devolvieron los mismos conteos que la corrida del 19 de octubre;
+OpenStreetMap, en cambio, se edita continuamente: aquella descarga había
+traído 33\,593 edificios (1\,022 con altura), sin que la diferencia cambie las
+exclusiones ni las rutas de ejemplo. Estos números
+describen \emph{registros extraídos o cargados}, no fallas sufridas por UAV. Las
 modificaciones posteriores del diagrama de base de datos mejoran su
 legibilidad; no cambian el grafo de navegación ni los resultados del
 simulador.
@@ -735,7 +758,7 @@ servido para calcular el riesgo de los tramos. La ventana de búsqueda se
 amplió en \texttt{comun/resiliencia.py} y el ejemplo se regeneró después del
 arreglo: entre los nodos 15 y 181, la línea base entrega rutas de 8,462 y
 9,166 km y la propuesta, de 8,462 y 8,587 km, con riesgo medio menor en la
-segunda ($0,4466$ frente a $0,5253$). Sobre 100 escenarios de demostración,
+segunda ($0{,}4466$ frente a $0{,}5253$). Sobre 100 escenarios de demostración,
 $R_{\rm par}$ resulta 0,91 para Dijkstra y 0,90 para la propuesta, mientras
 que $R_{\rm mision}$ da 0,91 para $A$ y 1,00 para $D$ y $C$
 ($\Delta R=9{,}0$ pp, $p=0{,}00391$). Estas cifras describen un par
@@ -781,8 +804,17 @@ riesgo de ningún segmento; únicamente eleva el riesgo medio desde
 aproximadamente 0,17 hasta 0,4511, por lo que esa cifra no debe leerse como
 una medida de amenaza. Los incendios históricos aportan poco, pues solo 7 de
 los 26 quedan dentro del radio de corte de 1,5 km, y las alturas de
-edificios cubren 1\,022 de 33\,593 registros. Mejorar estas tres fuentes y
-cargar una de zonas restringidas es el trabajo pendiente más inmediato. Además, el sitio muestra un par
+edificios cubren solo 1\,019 de 33\,630 registros; como un dato ausente no
+bloquea, el resto se trata de hecho como si no tuviera altura.
+
+El trabajo pendiente más inmediato, ordenado por lo que aporta, es: cargar
+una fuente de zonas restringidas ---por ejemplo, aeródromos y otras áreas de
+acceso restringido etiquetadas en OpenStreetMap, obtenidas en la misma
+consulta--- para que esa preferencia deje de ser inerte; retirar GPSJam del
+puntaje de riesgo e informarlo como una constante regional; evaluar si la
+restricción de viento debe comparar un percentil alto o la ráfaga en lugar de
+la mediana; y corregir el recorte de los focos al borde de la malla descrito
+en la Sección~\ref{sec:fallas}. Además, el sitio muestra un par
 origen--destino y calcula su resiliencia para esa consulta; no debe
 rotularse como éxito de la misión completa con los tres puntos intermedios.
 Tampoco se ha demostrado que el método propuesto supere consistentemente a
@@ -806,6 +838,16 @@ orientativo. El alcance real del experimento es comprobar si una estrategia
 reacciona mejor \emph{bajo el modelo de fallas declarado}, no garantizar su
 desempeño en vuelos reales.
 
+Queda fuera del trabajo, y se declara en lugar de omitirse, una línea que
+sugirió el profesor: considerar la defensa antiaérea como causa de pérdida
+de vehículos. No se encontró una fuente pública adecuada para incorporarla
+como dato, y el modelo solo representa zonas abstractas de indisponibilidad.
+El aviso por silencio ya es compatible con esa situación, porque reacciona a
+la desaparición de un UAV sin suponer su causa; lo que falta es caracterizar
+la amenaza ---su alcance y si un desvío la evita---, de modo que el radio de
+la zona a evitar no sea un supuesto. Ese análisis se deja como trabajo
+futuro.
+
 \section{Conclusiones}
 
 La Tarea 2 cuenta con una implementación coherente de ruteo físico y un
@@ -823,8 +865,9 @@ seguidores entre 10 y 17 puntos porcentuales, el efecto crece con el número
 de vehículos y ningún seguidor empeora por recibir el aviso. El resultado
 también delimita cuándo el mecanismo es irrelevante: con detección perfecta
 en el borde, cada UAV esquiva la zona por su cuenta. Es, además, el primer
-contexto en que la selección resiliente se distingue de la simple
-replanificación, aunque con márgenes menores.
+contexto en que la selección resiliente llega a distinguirse de la simple
+replanificación, aunque solo en algunas configuraciones y con márgenes
+menores, de $+3$ a $+6{,}5$ pp.
 
 Estas conclusiones valen para el conjunto de ajuste. La corrida reservada
 con parámetros congelados sigue pendiente y es la que permitirá afirmar o
