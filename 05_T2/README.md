@@ -32,7 +32,7 @@ docker compose up -d --build        # lo mismo, en segundo plano; avance con: do
 docker compose down                 # detiene; los datos de la BD se conservan (volumen db_data)
 ```
 
-`docker compose up` levanta dos servicios: `db` (PostgreSQL + PostGIS + pgRouting) y `main`, que ejecuta el `main.py` de la raíz: primero el pipeline y después, en el mismo contenedor, el sitio en **http://localhost:8000**. Dos variables cambian lo que hace `main.py`:
+`docker compose up` levanta dos servicios: `db` (PostgreSQL + PostGIS + pgRouting) y `main`, que ejecuta el `main.py` de esta carpeta: primero el pipeline y después, en el mismo contenedor, el sitio en **http://localhost:8000**. Dos variables cambian lo que hace `main.py`:
 
 | Variable | Efecto |
 |---|---|
@@ -60,6 +60,8 @@ docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste -
 
 ```text
 05_T2/
+├── main.py                        Orquestador (punto 9): pipeline y después sitio, en el servicio main
+├── docker-compose.yml             Servicios db, main, pruebas y app (.env.example: variables opcionales)
 ├── Dockerfile, requirements.txt   Imagen de la aplicación (ETL, cargas, sitio)
 ├── pipeline.py                    Orden de ejecución del ETL (lo llama main.py en el servicio main)
 ├── ruteo/                         Núcleo algorítmico (stdlib): grafo, Dijkstra, Yen, selección, fallas, simulador, flota, métricas
@@ -74,7 +76,7 @@ docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste -
 └── tests/                         test_ruteo.py (núcleo), test_flota.py (flota y avisos), test_etl.py (transformaciones)
 ```
 
-En `05_T2/` también están `docker-compose.yml` y `.env.example`. El `main.py` queda en la raíz del repo, como pide el punto 9 del enunciado, y el servicio `main` lo monta desde ahí.
+En `05_T2/` también están `main.py`, `docker-compose.yml` y `.env.example`. Así la carpeta es autocontenida: al subirla como repositorio de entrega, `main.py` queda en su raíz, como pide el punto 9 del enunciado.
 
 ## Fuentes
 

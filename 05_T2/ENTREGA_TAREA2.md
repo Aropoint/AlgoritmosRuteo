@@ -16,7 +16,7 @@ La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guí
 
 ## Proceso ETL completo (lo que pide el enunciado)
 
-`docker compose up` → contenedor `main` → `main.py` (raíz) → `05_T2/pipeline.py` y, al terminar, el sitio:
+`docker compose up` → contenedor `main` → `05_T2/main.py` → `05_T2/pipeline.py` y, al terminar, el sitio:
 
 1. **Esquema.** `BD/crear_bd.py` ejecuta `BD/schema.sql` (crea la BD desde cero).
 2. **Infraestructura.** `generar_infraestructura.py` produce el JSON y `cargar_infraestructura.py` lo carga en `nodos`, `aristas` y `mision`.
@@ -73,7 +73,7 @@ No es un criterio aparte de la rúbrica, pero responde la observación de la reu
   | `ucdp_eventos.json` | `Amenazas/ESTRUCTURA_ucdp_eventos_json.md` |
   | `rutas_ejemplo.json` | `BD/ESTRUCTURA_rutas_ejemplo_json.md` |
 
-- **Punto 9.** El `main.py` está en la raíz y `docker compose up` lo ejecuta dentro de un contenedor: descarga, carga en la BD y habilitación del sitio.
+- **Punto 9.** El `main.py` está en `05_T2/`, que es la raíz del repositorio de entrega, y `docker compose up` lo ejecuta dentro de un contenedor: descarga, carga en la BD y habilitación del sitio.
 - **Docker.** Todo corre en contenedores y el equipo no necesita Python: `db` y `main` con `docker compose up`; `pruebas` y `app` para las pruebas y los comandos sueltos.
 
 ## Advertencias que conviene decir en la presentación

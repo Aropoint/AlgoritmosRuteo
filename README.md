@@ -39,7 +39,7 @@ La existencia de datos y consultas PostGIS **no demuestra** que el algoritmo de 
 
 ## Ejecutar la Tarea 2
 
-Solo requiere Docker con Compose v2: Python corre únicamente dentro de los contenedores. El `docker-compose.yml` está en `05_T2/`; el `main.py` queda en la raíz, como pide el enunciado:
+Solo requiere Docker con Compose v2: Python corre únicamente dentro de los contenedores. El `docker-compose.yml` y el `main.py` están en `05_T2/`, que es la carpeta que se sube como repositorio de entrega (ahí `main.py` queda en la raíz, como pide el enunciado):
 
 ```bash
 cd 05_T2

@@ -42,19 +42,16 @@ services:
       timeout: 5s
       retries: 20
 
-  # main.py (raíz del repo, como pide el enunciado): pipeline completo y después el sitio web.
+  # main.py (esta carpeta): pipeline completo y después el sitio web en este mismo contenedor.
   main:
     <<: *app
     container_name: ruteo_uav_main
-    command: ["python", "/opt/main.py"]
+    command: ["python", "main.py"]
     environment:
       <<: *app-env
       SIN_DESCARGA: ${SIN_DESCARGA:-0}
       SOLO_SITIO: ${SOLO_SITIO:-0}
       WEB_PORT: ${WEB_PORT:-8000}
-    volumes:
-      - .:/app
-      - ../main.py:/opt/main.py:ro
     ports:
       - "${WEB_PORT:-8000}:8000"
 

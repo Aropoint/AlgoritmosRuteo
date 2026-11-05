@@ -1,19 +1,18 @@
 """Orquestador de la Tarea 2 (punto 9 del enunciado). Corre DENTRO de Docker: `docker compose up`
 lo ejecuta en el servicio `main`; en el equipo solo hace falta Docker con Compose v2.
 
-1. Ejecuta 05_T2/pipeline.py: esquema, infraestructura, descarga y carga de las 3 metadata y las
-   3 amenazas, pesos, rutas de ejemplo (pgr_dijkstra y pgr_KSP) y diagrama de la BD.
+1. Ejecuta pipeline.py (misma carpeta): esquema, infraestructura, descarga y carga de las
+   3 metadata y las 3 amenazas, pesos, rutas de ejemplo (pgr_dijkstra y pgr_KSP) y diagrama de la BD.
 2. Levanta el sitio web (FastAPI + Leaflet), que queda en http://localhost:8000 (o WEB_PORT).
 
 Variables de entorno (en .env o antes del comando):
     SIN_DESCARGA=1   reutiliza los JSON ya generados (no llama a las APIs)
     SOLO_SITIO=1     no corre el pipeline: levanta el sitio sobre la BD existente
 
-Uso, desde 05_T2/ (donde está docker-compose.yml):
+Uso, desde esta carpeta (donde están main.py y docker-compose.yml):
     docker compose up --build            # todo
     docker compose run --rm pruebas      # pruebas unitarias
     docker compose down                  # detiene (los datos de la BD se conservan)
-Desde la raíz del repositorio: docker compose -f 05_T2/docker-compose.yml up --build
 """
 from __future__ import annotations
 
@@ -22,7 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-APP = Path(os.environ.get("APP_DIR", "/app"))
+APP = Path(__file__).resolve().parent
 
 
 def activa(nombre: str) -> bool:
@@ -30,8 +29,9 @@ def activa(nombre: str) -> bool:
 
 
 def main() -> None:
-    if not (APP / "pipeline.py").exists():
-        sys.exit("main.py corre dentro de Docker. Desde la carpeta 05_T2:  docker compose up --build")
+    # pipeline.py está al lado también fuera de Docker: lo que distingue el contenedor es /.dockerenv
+    if not Path("/.dockerenv").exists():
+        sys.exit("main.py corre dentro de Docker. Desde esta carpeta:  docker compose up --build")
 
     if activa("SOLO_SITIO"):
         print("SOLO_SITIO=1: se omite el pipeline y se usa la BD existente.", flush=True)

@@ -1,4 +1,4 @@
-"""Pipeline ETL completo. Lo invoca main.py (raíz) dentro del contenedor `main` de docker compose.
+"""Pipeline ETL completo. Lo invoca main.py (misma carpeta) dentro del contenedor `main` de docker compose.
 
 Orden: esquema -> infraestructura -> 3 metadata -> 3 amenazas -> pesos -> rutas de ejemplo -> diagrama.
 Cada fuente externa es opcional: si su descarga falla, el pipeline sigue y el
