@@ -27,7 +27,7 @@ La Tarea 1 tomó como base **CLUN-LSR**, que recupera caminos de comunicación e
 | Componente | Estado verificable en este repositorio |
 |---|---|
 | Consultas a fuentes geoespaciales y meteorológicas | Seis fuentes implementadas con cargador y documento de estructura por cada JSON (`05_T2/Metadata/`, `05_T2/Amenazas/`). |
-| PostgreSQL/PostGIS/pgRouting | `docker-compose.yml`, `05_T2/BD/schema.sql`, diagrama generado y pipeline completo que corre en contenedores. |
+| PostgreSQL/PostGIS/pgRouting | `05_T2/docker-compose.yml`, `05_T2/BD/schema.sql`, diagrama generado y pipeline completo que corre en contenedores. |
 | Grafo físico de puntos y tramos, rutas `pgr_dijkstra` y `pgr_KSP` | Implementado: malla de 196 nodos y 618 aristas, dos rutas por método en `05_T2/comun/rutas.py` y `BD/rutas_ejemplo.py`. |
 | Algoritmo resiliente, comparación de rutas y métricas | Implementado: Yen + selección por `J(p,q)` + replanificación (`05_T2/ruteo/`), con `R_par`, `R_mision` y McNemar pareado. |
 | **Flota reactiva con aviso compartido** | Implementado: `05_T2/ruteo/flota.py`, animación en el sitio y barrido en `05_T2/resultados/`. |
@@ -39,15 +39,16 @@ La existencia de datos y consultas PostGIS **no demuestra** que el algoritmo de 
 
 ## Ejecutar la Tarea 2
 
-Solo requiere Docker con Compose v2: Python corre únicamente dentro de los contenedores. Desde la raíz del repositorio:
+Solo requiere Docker con Compose v2: Python corre únicamente dentro de los contenedores. El `docker-compose.yml` está en `05_T2/`; el `main.py` queda en la raíz, como pide el enunciado:
 
 ```bash
+cd 05_T2
 docker compose up --build           # BD + main.py: descarga, carga, pesos, rutas, diagrama y sitio
 docker compose run --rm pruebas     # 36 pruebas unitarias
 docker compose down                 # detiene; los datos de la BD se conservan
 ```
 
-`main.py` corre en el servicio `main`: primero ejecuta el pipeline y después levanta el sitio en ese mismo contenedor. Para no volver a descargar las fuentes se usa `SIN_DESCARGA=1`, y para levantar solo el sitio sobre la BD existente, `SOLO_SITIO=1`. Ambas se fijan en `.env` o antes del comando: `SIN_DESCARGA=1 docker compose up` en bash, o `$env:SIN_DESCARGA=1; docker compose up` en PowerShell. Sin `.env`, Compose usa los valores por defecto de [.env.example](.env.example).
+`main.py` corre en el servicio `main`: primero ejecuta el pipeline y después levanta el sitio en ese mismo contenedor. Para no volver a descargar las fuentes se usa `SIN_DESCARGA=1`, y para levantar solo el sitio sobre la BD existente, `SOLO_SITIO=1`. Ambas se fijan en `.env` o antes del comando: `SIN_DESCARGA=1 docker compose up` en bash, o `$env:SIN_DESCARGA=1; docker compose up` en PowerShell. El `.env` va en `05_T2/`; sin él, Compose usa los valores por defecto de [05_T2/.env.example](05_T2/.env.example). Desde la raíz también funciona: `docker compose -f 05_T2/docker-compose.yml up --build`.
 
 El sitio queda en **http://localhost:8000**: se elige origen y destino sobre el mapa, se ajustan las preferencias y la sección "Flota con aviso" anima el mismo escenario con aviso y sin aviso. Los puntos de observación de la misión se pueden mover, quitar y añadir desde esa misma sección. Los experimentos también corren en Docker, por ejemplo `docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste`.
 

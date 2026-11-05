@@ -2,7 +2,7 @@
 
 La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guía indica qué archivo lo cumple y qué mostrar en la diapositiva. Puntaje total: 60.
 
-> **Estado (22 de octubre de 2026):** todo se ejecuta con `docker compose up --build` desde la raíz;
+> **Estado (22 de octubre de 2026):** todo se ejecuta con `docker compose up --build` desde `05_T2/`;
 > el equipo solo necesita Docker, porque `main.py` corre dentro del contenedor `main`. La ejecución
 > completa terminó con los 18 pasos del pipeline en `ok` y las seis fuentes externas respondieron.
 > El detalle de los números está en [README.md](README.md#estado). Falta capturar las pantallas
@@ -31,7 +31,7 @@ La rúbrica se evalúa sobre la **presentación**. Para cada criterio, esta guí
 
 | # | Criterio | Pts | Dónde está | Qué mostrar |
 |---|---|---|---|---|
-| 1 | Docker con postgres, postgis y pgrouting | 2 | `docker-compose.yml` (imagen `pgrouting/pgrouting:17-3.5-3.8.0`), `05_T2/Dockerfile` | `docker compose ps` y la salida de `crear_bd.py` (versiones de PostGIS y pgRouting) |
+| 1 | Docker con postgres, postgis y pgrouting | 2 | `05_T2/docker-compose.yml` (imagen `pgrouting/pgrouting:17-3.5-3.8.0`), `05_T2/Dockerfile` | `docker compose ps` y la salida de `crear_bd.py` (versiones de PostGIS y pgRouting) |
 | 2 | Explicar el modelo de BD y entregar el SQL | 2 | `BD/schema.sql`, `BD/MODELO_BD.md`, `BD/diagrama_bd.png` | El diagrama y la tabla de grupos de MODELO_BD |
 | 3.1 | Scripts que obtienen n metadata → JSON | 6 | `Metadata/osm_edificios.py`, `elevacion.py`, `viento.py` + `ESTRUCTURA_*.md` | Fragmento de cada JSON y su documento de estructura |
 | 3.2 | Scripts que cargan la metadata en la BD | 2 | `Metadata/cargar_*.py` | Conteos de `meta_*` (los imprime cada cargador) |

@@ -1,6 +1,6 @@
 # Modelo de la base de datos
 
-Rúbrica, punto 0 y criterio 2. La BD se crea desde cero con [`schema.sql`](schema.sql), que ejecuta `python BD/crear_bd.py`. Usa PostgreSQL 17, PostGIS 3.5 y pgRouting 3.8 (imagen `pgrouting/pgrouting:17-3.5-3.8.0`, ver `docker-compose.yml` en la raíz).
+Rúbrica, punto 0 y criterio 2. La BD se crea desde cero con [`schema.sql`](schema.sql), que ejecuta `python BD/crear_bd.py`. Usa PostgreSQL 17, PostGIS 3.5 y pgRouting 3.8 (imagen `pgrouting/pgrouting:17-3.5-3.8.0`, ver `docker-compose.yml` en `05_T2/`).
 
 `python BD/diagrama_bd.py` genera **`diagrama_bd.png`** (y `.svg`) leyendo el catálogo de la BD ya creada, así que la imagen siempre coincide con el esquema real. El diagrama de abajo es la misma estructura en Mermaid, para verla en GitLab sin ejecutar nada.
 

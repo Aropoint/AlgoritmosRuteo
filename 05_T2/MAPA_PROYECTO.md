@@ -98,7 +98,7 @@ está en [ENTREGA_TAREA2.md](ENTREGA_TAREA2.md).
 
 | Rúbrica | Estado |
 |---|---|
-| Docker con PostGIS + pgRouting, diagrama y SQL | Escrito: `docker-compose.yml` (raíz), `05_T2/Dockerfile`, `BD/schema.sql`, `BD/diagrama_bd.py` y `BD/MODELO_BD.md`. |
+| Docker con PostGIS + pgRouting, diagrama y SQL | Escrito: `05_T2/docker-compose.yml`, `05_T2/Dockerfile`, `BD/schema.sql`, `BD/diagrama_bd.py` y `BD/MODELO_BD.md`. |
 | Infraestructura → JSON → BD | Hecho (`Infraestructura/`); el cargador está escrito. |
 | n metadata y n amenazas → JSON + cargadores | Escrito: `Metadata/` (OSM, elevación, viento) y `Amenazas/` (GPSJam, incendios de guerra, UCDP), cada uno con su documento de estructura. |
 | Modelo de fallas, pesos y restricciones con valores por defecto | Implementado en `ruteo/` y en `BD/pesos.sql`. |

@@ -9,10 +9,11 @@ Variables de entorno (en .env o antes del comando):
     SIN_DESCARGA=1   reutiliza los JSON ya generados (no llama a las APIs)
     SOLO_SITIO=1     no corre el pipeline: levanta el sitio sobre la BD existente
 
-Uso, desde la raíz del repositorio:
+Uso, desde 05_T2/ (donde está docker-compose.yml):
     docker compose up --build            # todo
     docker compose run --rm pruebas      # pruebas unitarias
     docker compose down                  # detiene (los datos de la BD se conservan)
+Desde la raíz del repositorio: docker compose -f 05_T2/docker-compose.yml up --build
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ def activa(nombre: str) -> bool:
 
 def main() -> None:
     if not (APP / "pipeline.py").exists():
-        sys.exit("main.py corre dentro de Docker. Desde la raíz del repositorio:  docker compose up --build")
+        sys.exit("main.py corre dentro de Docker. Desde la carpeta 05_T2:  docker compose up --build")
 
     if activa("SOLO_SITIO"):
         print("SOLO_SITIO=1: se omite el pipeline y se usa la BD existente.", flush=True)

@@ -1,4 +1,5 @@
 # Tarea 2: todo se ejecuta con Docker Compose; Python solo corre dentro de los contenedores.
+# Desde 05_T2/ (o desde la raíz con: docker compose -f 05_T2/docker-compose.yml ...):
 #   docker compose up --build            # BD + main.py (descarga, carga, pesos, rutas, diagrama) + sitio
 #   docker compose run --rm pruebas      # pruebas unitarias
 #   docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste
@@ -7,7 +8,7 @@
 name: ruteo-uav
 
 x-app: &app
-  build: ./05_T2
+  build: .
   image: ruteo-uav-app
   env_file:
     - path: .env
@@ -19,7 +20,7 @@ x-app: &app
     PGUSER: ${POSTGRES_USER:-postgres}
     PGPASSWORD: ${POSTGRES_PASSWORD:-ruteo_uav_local}
   volumes:
-    - ./05_T2:/app
+    - .:/app
   depends_on:
     db:
       condition: service_healthy
@@ -41,7 +42,7 @@ services:
       timeout: 5s
       retries: 20
 
-  # main.py (raíz): pipeline completo y después el sitio web en este mismo contenedor.
+  # main.py (raíz del repo, como pide el enunciado): pipeline completo y después el sitio web.
   main:
     <<: *app
     container_name: ruteo_uav_main
@@ -52,8 +53,8 @@ services:
       SOLO_SITIO: ${SOLO_SITIO:-0}
       WEB_PORT: ${WEB_PORT:-8000}
     volumes:
-      - ./05_T2:/app
-      - ./main.py:/opt/main.py:ro
+      - .:/app
+      - ../main.py:/opt/main.py:ro
     ports:
       - "${WEB_PORT:-8000}:8000"
 

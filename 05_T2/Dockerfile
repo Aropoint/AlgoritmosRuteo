@@ -16,6 +16,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
-# Por defecto corre las pruebas. docker-compose.yml (raíz) define los servicios que usan esta imagen:
+# Por defecto corre las pruebas. docker-compose.yml (esta misma carpeta) define los servicios que usan esta imagen:
 # main (main.py: pipeline y sitio), pruebas y app (comandos sueltos).
 CMD ["python", "-m", "unittest", "discover", "-s", "tests"]

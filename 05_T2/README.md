@@ -24,7 +24,7 @@ En el sitio se puede animar un escenario con aviso y sin aviso.
 
 ## Ejecutar todo (Docker)
 
-Solo requiere Docker Desktop o Docker Engine con Compose v2: **Python corre únicamente dentro de los contenedores**. Desde la **raíz del repo**:
+Solo requiere Docker Desktop o Docker Engine con Compose v2: **Python corre únicamente dentro de los contenedores**. Desde esta carpeta, **`05_T2/`**, donde está el `docker-compose.yml` (desde la raíz: `docker compose -f 05_T2/docker-compose.yml ...`):
 
 ```bash
 docker compose up --build           # BD + main.py: descarga, carga, pesos, rutas, diagrama y sitio
@@ -39,7 +39,7 @@ docker compose down                 # detiene; los datos de la BD se conservan (
 | `SIN_DESCARGA=1` | Reutiliza los JSON ya generados; no llama a las APIs |
 | `SOLO_SITIO=1` | No corre el pipeline: levanta el sitio sobre la BD existente |
 
-Se fijan en `.env` o antes del comando: `SIN_DESCARGA=1 docker compose up` en bash, o `$env:SIN_DESCARGA=1; docker compose up` en PowerShell. Sin `.env`, Compose usa los valores de `.env.example`, incluidas las fechas de la ventana de datos. La BD no se publica fuera de Docker; para consultarla: `docker compose exec db psql -U postgres -d ruteo_uav`.
+Se fijan en `.env` o antes del comando: `SIN_DESCARGA=1 docker compose up` en bash, o `$env:SIN_DESCARGA=1; docker compose up` en PowerShell. El `.env` va en `05_T2/`; sin él, Compose usa los valores de `.env.example`, incluidas las fechas de la ventana de datos. La BD no se publica fuera de Docker; para consultarla: `docker compose exec db psql -U postgres -d ruteo_uav`.
 
 ## Pruebas, experimentos y scripts sueltos (en Docker)
 
@@ -74,7 +74,7 @@ docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste -
 └── tests/                         test_ruteo.py (núcleo), test_flota.py (flota y avisos), test_etl.py (transformaciones)
 ```
 
-Fuera de `05_T2/`, en la raíz del repo: `main.py`, `docker-compose.yml` y `.env.example`.
+En `05_T2/` también están `docker-compose.yml` y `.env.example`. El `main.py` queda en la raíz del repo, como pide el punto 9 del enunciado, y el servicio `main` lo monta desde ahí.
 
 ## Fuentes
 
