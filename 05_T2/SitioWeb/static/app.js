@@ -1,14 +1,32 @@
 'use strict';
 
-// Mapa del sitio: capas de infraestructura, metadata y amenazas; rutas Dijkstra vs propuesta.
+// Sitio de la Tarea 3: consulta del usuario, panel de control con capas (Ver / Considerar), las cuatro técnicas
+// de ruteo con su tiempo de cómputo y resiliencia, sorteo de fallas 0-100 y caso de ejemplo. Debajo, lo de la
+// Tarea 2 (par Yen y flota con aviso), sin cambios de comportamiento.
+
+const TECNICAS = {
+  // Grosores anidados: si varias técnicas eligen el mismo tramo, se ven todas (de la más ancha a la más fina).
+  dijkstra_m: { nombre: 'pgr_dijkstra (metros)', color: '#2563eb', dash: null, peso: 13, opacidad: 0.45 },
+  milp_gurobi: { nombre: 'MILP con Gurobi', color: '#059669', dash: null, peso: 8, opacidad: 0.95 },
+  dijkstra_ponderado: { nombre: 'pgr_dijkstra ponderado', color: '#7c3aed', dash: '9 9', peso: 4.5, opacidad: 1 },
+  aco: { nombre: 'Colonia de hormigas (ACO)', color: '#f472b6', dash: null, peso: 2, opacidad: 1 },
+};
+const MOTIVOS = {
+  edificio: { color: '#111827', texto: 'edificio (+ relieve) ≥ altura de vuelo − margen' },
+  relieve: { color: '#92400e', texto: 'relieve ≥ altura de vuelo − margen' },
+  zona_publicada: { color: '#be123c', texto: 'zona restringida publicada (OSM)' },
+  zona_usuario: { color: '#e11d48', texto: 'zona prohibida dibujada por el usuario' },
+};
 const COLOR = { dijkstra: '#2563eb', propuesta: '#ea580c', origen: '#16a34a', destino: '#7c3aed' };
 const AOI_DEFECTO = [[46.945, 31.95], [47.005, 32.04]];
+const P_ESCALA = 0.12;  // p de falla que se pinta en rojo pleno
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const vacio = (x) => x === null || x === undefined || Number.isNaN(Number(x));
+const vacio = (x) => x === null || x === undefined || x === '' || Number.isNaN(Number(x));
 const num = (x, d = 2) => (vacio(x) ? '—' : Number(x).toLocaleString('es-CL', { maximumFractionDigits: d }));
 const pct = (x, d = 0) => (vacio(x) ? '—' : `${num(100 * x, d)} %`);
+const si = (b) => (b ? '<span class="ok">✓</span>' : '<span class="no">✗</span>');
 
 async function pedir(url, opciones) {
   const r = await fetch(url, opciones);
@@ -21,105 +39,304 @@ async function pedir(url, opciones) {
   }
   return datos;
 }
+const postJSON = (url, cuerpo) => pedir(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
 
 // ---------------------------------------------------------------------------
-// Mapa base y capas
+// Mapa base
 // ---------------------------------------------------------------------------
 const mapa = L.map('mapa', { preferCanvas: true }).fitBounds(AOI_DEFECTO);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; colaboradores de <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 }).addTo(mapa);
-const control = L.control.layers(null, null, { collapsed: false }).addTo(mapa);
 
-function colorRiesgo(r) {
-  const t = Math.max(0, Math.min(1, Number(r) || 0));
-  const [a, b, u] = t < 0.5 ? [[156, 163, 175], [245, 158, 11], t / 0.5] : [[245, 158, 11], [220, 38, 38], (t - 0.5) / 0.5];
-  const c = a.map((v, i) => Math.round(v + (b[i] - v) * u));
-  return `rgb(${c.join(',')})`;
+function rampa(t, paradas) {
+  const x = Math.max(0, Math.min(1, Number(t) || 0)) * (paradas.length - 1);
+  const i = Math.min(paradas.length - 2, Math.floor(x));
+  const u = x - i;
+  return `rgb(${paradas[i].map((v, k) => Math.round(v + (paradas[i + 1][k] - v) * u)).join(',')})`;
 }
+const colorP = (p) => rampa(Math.min(1, (Number(p) || 0) / P_ESCALA), [[156, 163, 175], [245, 158, 11], [220, 38, 38]]);
+const colorRiesgo = (r) => rampa(r, [[156, 163, 175], [245, 158, 11], [220, 38, 38]]);
+const colorElevacion = (t) => rampa(t, [[37, 99, 235], [22, 163, 74], [234, 179, 8], [146, 64, 14]]);
 
-function popup(props) {
-  const filas = Object.entries(props).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`);
-  return `<table>${filas.join('')}</table>`;
-}
-
-const CAPAS = {
-  aristas: {
-    nombre: 'Tramos del grafo (color = riesgo)', visible: true,
-    style: (f) => ({ color: colorRiesgo(f.properties.riesgo), weight: 2, opacity: 0.8 }),
-  },
-  mision: {
-    nombre: 'Misión: inicio, puntos de observación, destino', visible: true,
-    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 7, color: '#111827', weight: 2, fillColor: '#fde047', fillOpacity: 1 }),
-  },
-  edificios: {
-    nombre: 'Metadata: edificios OSM (gris oscuro = con altura)', perezosa: true,
-    style: (f) => ({ color: f.properties.altura_m ? '#475569' : '#94a3b8', weight: 0.5, fillOpacity: f.properties.altura_m ? 0.5 : 0.15 }),
-  },
-  gpsjam: {
-    nombre: 'Amenaza: GPSJam (celdas H3; rojo = días degradados)',
-    style: (f) => {
-      const p = f.properties.frac_dias_rojos;
-      return { color: '#7c3aed', weight: 1, fillColor: p ? '#dc2626' : '#7c3aed', fillOpacity: p ? 0.1 + 0.5 * p : 0.03 };
-    },
-  },
-  incendios: {
-    nombre: 'Amenaza: incendios de guerra (oscuro = período de evaluación)',
-    pointToLayer: (f, ll) => L.circleMarker(ll, {
-      radius: 3, weight: 0, fillOpacity: 0.7, fillColor: f.properties.periodo === 'evaluacion' ? '#7f1d1d' : '#f97316',
-    }),
-  },
-  eventos: {
-    nombre: 'Amenaza: eventos UCDP',
-    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 5, color: '#111827', weight: 1, fillColor: '#111827', fillOpacity: 0.45 }),
-  },
+const ETIQUETAS = {
+  id: 'id', largo_m: 'largo (m)', largo_km: 'largo (km)', riesgo: 'riesgo T2 (0–1)', r_eventos: 'intensidad UCDP',
+  r_incendios: 'intensidad incendios', p_gnss: 'GPSJam (fracción de días en rojo)', pf_eventos: 'p falla UCDP',
+  pf_incendios: 'p falla incendios', pf_gnss: 'p falla GNSS', pf_total: 'p falla (las 3 amenazas)',
+  altura_max_edificio_m: 'edificio más alto a ≤ 15 m (m)', terreno_max_m: 'terreno máx. (m s. n. m.)',
+  en_zona_restringida: 'en zona restringida', tipo: 'tipo', elevacion_m: 'elevación (m s. n. m.)', orden: 'orden',
+  rol: 'rol', osm_id: 'OSM id', altura_m: 'altura (m)', origen_altura: 'origen de la altura', clase: 'clase',
+  nombre: 'nombre', buffer_m: 'radio de protección (m)', h3: 'celda H3', dias_con_datos: 'días con datos',
+  dias_rojos: 'días en rojo', frac_dias_rojos: 'fracción de días en rojo', pct_malo_medio: '% de aviones degradados',
+  contiene_aoi: 'contiene el AOI', fecha: 'fecha', periodo: 'período', guerra: 'de guerra',
+  tipo_violencia: 'tipo de violencia', muertes: 'muertes estimadas', lugar: 'lugar',
 };
-
-const estado = { origen: null, destino: null, mision: null, defecto: null, puntos: null };
-
-for (const [clave, def] of Object.entries(CAPAS)) {
-  const grupo = L.layerGroup();
-  control.addOverlay(grupo, def.nombre);
-  if (def.visible) grupo.addTo(mapa);
-  let cargada = false;
-  const cargar = async () => {
-    if (cargada) return;
-    cargada = true;
-    try {
-      const geo = await pedir(`/api/capas/${clave}`);
-      if (clave === 'mision') { estado.mision = geo; restaurarPuntos(); }
-      const opciones = { onEachFeature: (f, l) => l.bindPopup(popup(f.properties)) };
-      if (def.style) opciones.style = def.style;
-      if (def.pointToLayer) opciones.pointToLayer = def.pointToLayer;
-      L.geoJSON(geo, opciones).addTo(grupo);
-      if (clave === 'mision') grupo.eachLayer((l) => l.bringToFront && l.bringToFront());
-    } catch (e) {
-      cargada = false;
-      console.warn(`Capa ${clave}:`, e);
-    }
-  };
-  if (def.perezosa) grupo.on('add', cargar); else cargar();
+function tabla(props, titulo) {
+  const filas = Object.entries(props).filter(([, v]) => v !== null && v !== undefined)
+    .map(([k, v]) => `<tr><th>${esc(ETIQUETAS[k] || k)}</th><td>${esc(typeof v === 'number' ? num(v, 6) : v)}</td></tr>`);
+  return `${titulo ? `<b>${esc(titulo)}</b>` : ''}<table class="popup">${filas.join('')}</table>`;
 }
-
-const capaEjemplo = L.layerGroup().addTo(mapa);
-control.addOverlay(capaEjemplo, 'Ejemplo de la misión (pgr_dijkstra y propuesta)');
-const capaCalculadas = L.layerGroup().addTo(mapa);
-control.addOverlay(capaCalculadas, 'Rutas calculadas');
-
-const leyenda = L.control({ position: 'bottomright' });
-leyenda.onAdd = () => {
-  const div = L.DomUtil.create('div', 'leyenda');
-  div.innerHTML = `
-    <div><span class="linea dij"></span>Dijkstra ruta 1 &nbsp;<span class="linea dij alt"></span>ruta 2</div>
-    <div><span class="linea prop"></span>Propuesta ruta 1 &nbsp;<span class="linea prop alt"></span>ruta 2</div>
-    <div>Riesgo del tramo: 0 <span class="barra"></span> 1</div>`;
-  return div;
-};
-leyenda.addTo(mapa);
 
 // ---------------------------------------------------------------------------
-// Origen y destino
+// Estado
+// ---------------------------------------------------------------------------
+const estado = {
+  origen: null, destino: null, mision: null, defecto: null, puntos: null, perfiles: {},
+  considerar: { edificios: true, relieve: true, viento: true, zonas_publicadas: true, eventos: true, incendios: true, gnss: true, zonas_usuario: true },
+  zonas: [],            // {tipo: 'prohibida', vertices: [[lat, lon], ...]} | {tipo: 'amenaza', lat, lon, radio_m, p}
+  ultimo: null,         // respuesta de /api/t3/rutas
+  ultimoCuerpo: null,   // consulta con que se calculó
+  sorteo: null,         // respuesta de /api/t3/sorteo
+  capaArista: {},       // id -> capa del tramo
+  propsArista: {},      // id -> propiedades de la BD
+  viento: null,
+};
+
+// ---------------------------------------------------------------------------
+// Panel de control (punto 4): capas con Ver y Considerar
+// ---------------------------------------------------------------------------
+const GRUPOS = ['Infraestructura', 'Metadata', 'Amenazas', 'Rutas', 'Simulación'];
+const CAPAS = [
+  { clave: 'aristas', grupo: 'Infraestructura', nombre: 'Tramos (color = p de falla)', ver: true },
+  { clave: 'nodos', grupo: 'Infraestructura', nombre: 'Nodos (color = p de falla)', ver: false },
+  { clave: 'excluidas', grupo: 'Infraestructura', nombre: 'Tramos no sobrevolables (por motivo)', ver: true },
+  { clave: 'mision', grupo: 'Infraestructura', nombre: 'Misión y puntos de observación', ver: true },
+  { clave: 'edificios', grupo: 'Metadata', nombre: 'Edificios OSM (oscuro = con altura)', ver: false, considerar: 'edificios' },
+  { clave: 'elevacion', grupo: 'Metadata', nombre: 'Elevación del terreno (nodos)', ver: false, considerar: 'relieve' },
+  { clave: 'viento', grupo: 'Metadata', nombre: 'Viento (flecha en el mapa)', ver: true, considerar: 'viento' },
+  { clave: 'zonas_restringidas', grupo: 'Metadata', nombre: 'Zonas restringidas OSM (helipuertos)', ver: true, considerar: 'zonas_publicadas' },
+  { clave: 'eventos', grupo: 'Amenazas', nombre: 'Eventos UCDP', ver: true, considerar: 'eventos' },
+  { clave: 'incendios', grupo: 'Amenazas', nombre: 'Incendios de guerra (oscuro = evaluación)', ver: false, considerar: 'incendios' },
+  { clave: 'gpsjam', grupo: 'Amenazas', nombre: 'GPSJam (celdas H3)', ver: false, considerar: 'gnss' },
+  { clave: 'zonas_usuario', grupo: 'Amenazas', nombre: 'Zonas del usuario (prohibidas y de amenaza)', ver: true, considerar: 'zonas_usuario' },
+  ...Object.entries(TECNICAS).map(([k, t]) => ({ clave: `ruta_${k}`, grupo: 'Rutas', nombre: t.nombre, ver: true, tecnica: k })),
+  { clave: 'yen', grupo: 'Rutas', nombre: 'Par Yen y Dijkstra (Tarea 2)', ver: false },
+  { clave: 'fallas', grupo: 'Simulación', nombre: 'Fallas sorteadas', ver: true },
+  { clave: 'vuelos', grupo: 'Simulación', nombre: 'Vuelo tras el sorteo', ver: true },
+  { clave: 'flota', grupo: 'Simulación', nombre: 'Flota con aviso (Tarea 2)', ver: true },
+];
+const capa = {};
+CAPAS.forEach((c) => { capa[c.clave] = L.layerGroup(); });
+
+function construirPanel() {
+  const html = GRUPOS.map((g) => {
+    const filas = CAPAS.filter((c) => c.grupo === g).map((c) => {
+      const muestra = c.tecnica
+        ? `<span class="linea" style="border-color:${TECNICAS[c.tecnica].color};border-top-style:${TECNICAS[c.tecnica].dash ? 'dashed' : 'solid'}"></span>`
+        : '';
+      const cons = c.considerar
+        ? `<label class="considerar" title="Entra al cálculo"><input type="checkbox" data-considerar="${c.considerar}"${estado.considerar[c.considerar] ? ' checked' : ''}> considerar</label>`
+        : '';
+      return `<div class="capa"><label><input type="checkbox" data-ver="${c.clave}"${c.ver ? ' checked' : ''}> ${muestra}${esc(c.nombre)}</label>${cons}</div>`;
+    });
+    return `<div class="grupo"><div class="grupo-titulo">${g}</div>${filas.join('')}</div>`;
+  });
+  $('panel-capas').innerHTML = html.join('');
+  $('panel-capas').querySelectorAll('[data-ver]').forEach((el) => el.addEventListener('change', () => verCapa(el.dataset.ver, el.checked)));
+  $('panel-capas').querySelectorAll('[data-considerar]').forEach((el) => el.addEventListener('change', () => {
+    estado.considerar[el.dataset.considerar] = el.checked;
+    if (estado.ultimo) $('txt-recalcular').hidden = false;
+  }));
+  CAPAS.forEach((c) => verCapa(c.clave, c.ver));
+}
+
+function verCapa(clave, visible) {
+  const c = CAPAS.find((x) => x.clave === clave);
+  if (clave === 'viento') {
+    controlViento.getContainer().style.display = visible ? '' : 'none';
+    return;
+  }
+  if (visible) {
+    capa[clave].addTo(mapa);
+    if (CARGADORES[clave]) CARGADORES[clave]();
+  } else {
+    capa[clave].remove();
+  }
+  const chk = $('panel-capas').querySelector(`[data-ver="${clave}"]`);
+  if (chk && chk.checked !== visible) chk.checked = visible;
+  return c;
+}
+
+// Datos GeoJSON de la BD, una sola vez por capa
+const cache = {};
+const geo = (nombre) => (cache[nombre] = cache[nombre] || pedir(`/api/capas/${nombre}`));
+
+function unaVez(fn) {
+  let hecho = null;
+  return () => (hecho = hecho || fn().catch((e) => { hecho = null; console.warn(e); }));
+}
+
+function pArista(id) {
+  const u = estado.ultimo;
+  if (u && u.probabilidades) return Number(u.probabilidades.aristas[id] ?? 0);
+  return Number((estado.propsArista[id] || {}).pf_total ?? 0);
+}
+function pNodo(id, props) {
+  const u = estado.ultimo;
+  if (u && u.probabilidades) return Number(u.probabilidades.nodos[id] ?? 0);
+  return Number(props.pf_total ?? 0);
+}
+
+function popupArista(id) {
+  const props = estado.propsArista[id] || {};
+  const p = pArista(id);
+  let extra = `<p class="nota">p de falla con lo que se considera ahora: <b>${num(p, 5)}</b> · umbral 0–100: <b>${num(100 * (1 - p), 3)}</b></p>`;
+  const t = estado.sorteo && estado.sorteo.tiradas_rutas.aristas[id];
+  if (t) extra += `<p class="nota">Último sorteo: n = ${num(t.n, 3)} ${t.falla ? '>' : '≤'} ${num(t.umbral, 3)} → ${t.falla ? '<b>falla</b>' : 'no falla'}</p>`;
+  const exc = estado.ultimo && (estado.ultimo.excluidas || []).find((x) => x.id === id);
+  if (exc) extra += `<p class="nota">No sobrevolable: ${esc(MOTIVOS[exc.motivo].texto)} (obstáculo ${num(exc.obstaculo_m, 1)} m, umbral ${num(exc.umbral_m, 1)} m)</p>`;
+  return tabla(props, `Tramo ${id}`) + extra;
+}
+
+const CARGADORES = {
+  aristas: unaVez(async () => {
+    const datos = await geo('aristas');
+    L.geoJSON(datos, {
+      style: (f) => ({ color: colorP(f.properties.pf_total), weight: 2, opacity: 0.85 }),
+      onEachFeature: (f, l) => {
+        estado.capaArista[f.properties.id] = l;
+        estado.propsArista[f.properties.id] = f.properties;
+        l.bindPopup(() => popupArista(f.properties.id), { maxWidth: 340 });
+      },
+    }).addTo(capa.aristas);
+  }),
+  nodos: unaVez(async () => {
+    const datos = await geo('nodos');
+    L.geoJSON(datos, {
+      pointToLayer: (f, ll) => {
+        const m = L.circleMarker(ll, { radius: 4, weight: 1, color: '#374151', fillOpacity: 0.9, fillColor: colorP(f.properties.pf_total) });
+        m.feature = f;
+        return m;
+      },
+      onEachFeature: (f, l) => l.bindPopup(() => {
+        const p = pNodo(f.properties.id, f.properties);
+        const t = estado.sorteo && estado.sorteo.tiradas_rutas.nodos[f.properties.id];
+        return tabla(f.properties, `Nodo ${f.properties.id}`)
+          + `<p class="nota">p de falla con lo que se considera ahora: <b>${num(p, 5)}</b></p>`
+          + (t ? `<p class="nota">Último sorteo: n = ${num(t.n, 3)} ${t.falla ? '>' : '≤'} ${num(t.umbral, 3)} → ${t.falla ? '<b>falla</b>' : 'no falla'}</p>` : '');
+      }),
+    }).addTo(capa.nodos);
+  }),
+  elevacion: unaVez(async () => {
+    const datos = await geo('nodos');
+    const elev = datos.features.map((f) => f.properties.elevacion_m).filter((x) => !vacio(x));
+    const min = Math.min(...elev);
+    const max = Math.max(...elev);
+    L.geoJSON(datos, {
+      pointToLayer: (f, ll) => L.circleMarker(ll, {
+        radius: 6, weight: 0, fillOpacity: 0.85,
+        fillColor: vacio(f.properties.elevacion_m) ? '#9ca3af' : colorElevacion((f.properties.elevacion_m - min) / ((max - min) || 1)),
+      }),
+      onEachFeature: (f, l) => l.bindPopup(tabla({ id: f.properties.id, elevacion_m: f.properties.elevacion_m },
+        `Elevación (Copernicus GLO-90): ${num(min, 0)} a ${num(max, 0)} m en el AOI`)),
+    }).addTo(capa.elevacion);
+  }),
+  mision: unaVez(async () => {
+    const datos = await geo('mision');
+    estado.mision = datos;
+    if (!estado.puntos) restaurarPuntos();
+    L.geoJSON(datos, {
+      pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 7, color: '#111827', weight: 2, fillColor: '#fde047', fillOpacity: 1 }),
+      onEachFeature: (f, l) => l.bindPopup(tabla(f.properties, 'Punto de la misión')),
+    }).addTo(capa.mision);
+    capaPuntos.addTo(capa.mision);
+  }),
+  edificios: unaVez(async () => {
+    L.geoJSON(await geo('edificios'), {
+      style: (f) => ({ color: f.properties.altura_m ? '#475569' : '#94a3b8', weight: 0.5, fillOpacity: f.properties.altura_m ? 0.5 : 0.15 }),
+      onEachFeature: (f, l) => l.bindPopup(tabla(f.properties, 'Edificio OSM')),
+    }).addTo(capa.edificios);
+  }),
+  zonas_restringidas: unaVez(async () => {
+    L.geoJSON(await geo('zonas_restringidas'), {
+      style: () => ({ color: MOTIVOS.zona_publicada.color, weight: 2, fillOpacity: 0.15, dashArray: '4 4' }),
+      onEachFeature: (f, l) => l.bindPopup(tabla(f.properties, 'Zona restringida publicada (OSM aeroway)')),
+    }).addTo(capa.zonas_restringidas);
+  }),
+  gpsjam: unaVez(async () => {
+    L.geoJSON(await geo('gpsjam'), {
+      style: (f) => {
+        const p = f.properties.frac_dias_rojos;
+        return { color: '#7c3aed', weight: 1, fillColor: p ? '#dc2626' : '#7c3aed', fillOpacity: p ? 0.08 + 0.4 * p : 0.03 };
+      },
+      onEachFeature: (f, l) => l.bindPopup(tabla(f.properties, 'GPSJam: degradación GNSS (celda H3)')),
+    }).addTo(capa.gpsjam);
+  }),
+  incendios: unaVez(async () => {
+    L.geoJSON(await geo('incendios'), {
+      pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 4, weight: 0, fillOpacity: 0.8, fillColor: f.properties.periodo === 'evaluacion' ? '#7f1d1d' : '#f97316' }),
+      onEachFeature: (f, l) => l.bindPopup(tabla(f.properties, 'Incendio de guerra (The Economist / FIRMS)')),
+    }).addTo(capa.incendios);
+  }),
+  eventos: unaVez(async () => {
+    L.geoJSON(await geo('eventos'), {
+      pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 5, color: '#111827', weight: 1, fillColor: '#111827', fillOpacity: 0.4 }),
+      onEachFeature: (f, l) => l.bindPopup(tabla(f.properties, 'Evento UCDP')),
+    }).addTo(capa.eventos);
+  }),
+};
+
+function recolorear() {
+  Object.entries(estado.capaArista).forEach(([id, l]) => l.setStyle({ color: colorP(pArista(id)) }));
+  capa.nodos.eachLayer((g) => g.eachLayer && g.eachLayer((m) => {
+    if (m.feature) m.setStyle({ fillColor: colorP(pNodo(m.feature.properties.id, m.feature.properties)) });
+  }));
+}
+
+// Viento: no es un polígono, así que va como un control con flecha y detalle al pulsarlo.
+const controlViento = L.control({ position: 'topleft' });
+controlViento.onAdd = () => {
+  const div = L.DomUtil.create('div', 'viento');
+  div.innerHTML = '<div class="flecha">↑</div><div class="txt">viento…</div><div class="detalle" hidden></div>';
+  L.DomEvent.disableClickPropagation(div);
+  div.addEventListener('click', () => { const d = div.querySelector('.detalle'); d.hidden = !d.hidden; });
+  div.title = 'Viento representativo de la ventana (pulsa para ver el detalle)';
+  return div;
+};
+controlViento.addTo(mapa);
+
+function pintarViento(v) {
+  estado.viento = v;
+  const div = controlViento.getContainer();
+  if (!v || vacio(v.velocidad_a_altura_vuelo_m_s)) {
+    div.querySelector('.txt').textContent = 'sin datos de viento';
+    return;
+  }
+  const hacia = (Number(v.direccion_desde_grados) + 180) % 360;
+  div.querySelector('.flecha').style.transform = `rotate(${hacia}deg)`;
+  div.querySelector('.txt').innerHTML = `<b>${num(v.velocidad_a_altura_vuelo_m_s, 1)} m/s</b><br>desde ${num(v.direccion_desde_grados, 0)}°`;
+  div.querySelector('.detalle').innerHTML = tabla({
+    'fuente': v.fuente, 'horas': v.horas, 'desde': String(v.desde || '').slice(0, 10), 'hasta': String(v.hasta || '').slice(0, 10),
+    'mediana a 100 m (m/s)': v.mediana_100m_m_s, 'p95 a 100 m (m/s)': v.p95_100m_m_s, 'ráfaga máx. a 10 m (m/s)': v.rafaga_max_10m_m_s,
+    'a la altura de vuelo (m/s)': v.velocidad_a_altura_vuelo_m_s,
+  }) + '<p class="nota">Entra al costo como factor de viento de frente v / (v − h), distinto en cada sentido del tramo.</p>';
+}
+
+// Leyenda: algoritmo, tiempo de cómputo y resiliencia de cada ruta (punto 8)
+const leyenda = L.control({ position: 'bottomright' });
+leyenda.onAdd = () => L.DomUtil.create('div', 'leyenda');
+leyenda.addTo(mapa);
+
+function actualizarLeyenda() {
+  const u = estado.ultimo;
+  const filas = Object.entries(TECNICAS).map(([k, t]) => {
+    const r = u && (u.tecnicas || []).find((x) => x.clave === k);
+    const estrella = u && u.mas_resiliente === k ? '★ ' : '';
+    const datos = r && r.coordenadas
+      ? ` · ${num(r.tiempo_ms, 1)} ms · R = ${pct(r.resiliencia, 1)} · F = ${num(r.fiabilidad, 3)} · ${num(r.largo_km, 2)} km`
+      : (r && r.error ? ' · sin ruta' : '');
+    return `<div class="${estrella ? 'mejor' : ''}"><span class="linea" style="border-color:${t.color};border-top-style:${t.dash ? 'dashed' : 'solid'}"></span>${estrella}${t.nombre}${datos}</div>`;
+  });
+  const pie = u
+    ? `<div class="pie">R = misiones completadas en ${esc(u.resiliencia ? u.resiliencia.n_sorteos : 0)} sorteos · F = ∏(1 − p) · ★ más resiliente</div>`
+    : '<div class="pie">Calcula una consulta para ver tiempo de cómputo y resiliencia.</div>';
+  leyenda.getContainer().innerHTML = `${filas.join('')}${pie}
+    <div>p de falla del tramo: 0 <span class="barra"></span> ≥ ${num(P_ESCALA, 2)}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Origen, destino y puntos de observación
 // ---------------------------------------------------------------------------
 const marcadores = { origen: null, destino: null };
 
@@ -140,44 +357,13 @@ function quitar(tipo) {
   describirSecuencia();
 }
 
-mapa.on('click', (e) => {
-  if (modoAnadir) {
-    anadirPunto(e.latlng);
-    return;
-  }
-  if (!estado.origen || estado.destino) {
-    quitar('destino');
-    fijar('origen', e.latlng);
-  } else {
-    fijar('destino', e.latlng);
-  }
-});
-
-$('btn-limpiar').addEventListener('click', () => { quitar('origen'); quitar('destino'); capaCalculadas.clearLayers(); });
-
 function ordenarMision() {
   if (!estado.mision) return [];
   return estado.mision.features.slice().sort((a, b) => a.properties.orden - b.properties.orden)
     .map((f) => ({ lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], rol: f.properties.rol }));
 }
 
-$('btn-mision').addEventListener('click', async () => {
-  try {
-    if (!estado.mision) estado.mision = await pedir('/api/capas/mision');
-    const puntos = ordenarMision();
-    if (puntos.length < 2) throw new Error('La misión no tiene inicio y destino.');
-    fijar('origen', L.latLng(puntos[0].lat, puntos[0].lon));
-    fijar('destino', L.latLng(puntos[puntos.length - 1].lat, puntos[puntos.length - 1].lon));
-    restaurarPuntos();  // el origen y el destino de la misión no sustituyen a los puntos de observación
-  } catch (e) {
-    mostrarEstado(`No se pudo leer la misión: ${e.message}`, true);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Puntos de observación de la flota: se pueden mover, quitar y añadir
-// ---------------------------------------------------------------------------
-const capaPuntos = L.layerGroup().addTo(mapa);
+const capaPuntos = L.layerGroup();
 let modoAnadir = false;
 
 function dibujarPuntos() {
@@ -194,7 +380,7 @@ function dibujarPuntos() {
       describirSecuencia();
     });
     m.on('click', (ev) => {
-      L.DomEvent.stop(ev);  // si no, el mapa lo toma como clic de origen o destino
+      L.DomEvent.stop(ev);
       estado.puntos.splice(i, 1);
       dibujarPuntos();
     });
@@ -225,36 +411,178 @@ function describirSecuencia() {
 }
 
 $('btn-anadir-punto').addEventListener('click', () => {
+  terminarDibujo();
   modoAnadir = !modoAnadir;
   const b = $('btn-anadir-punto');
   b.classList.toggle('activo', modoAnadir);
   b.textContent = modoAnadir ? 'Pulsa en el mapa…' : 'Añadir punto';
 });
-
 $('btn-restaurar-puntos').addEventListener('click', restaurarPuntos);
 
+$('btn-limpiar').addEventListener('click', () => { quitar('origen'); quitar('destino'); });
+
+$('btn-mision').addEventListener('click', async () => {
+  try {
+    if (!estado.mision) estado.mision = await geo('mision');
+    const puntos = ordenarMision();
+    if (puntos.length < 2) throw new Error('La misión no tiene inicio y destino.');
+    fijar('origen', L.latLng(puntos[0].lat, puntos[0].lon));
+    fijar('destino', L.latLng(puntos[puntos.length - 1].lat, puntos[puntos.length - 1].lon));
+    restaurarPuntos();
+  } catch (e) {
+    mostrarEstado(`No se pudo leer la misión: ${e.message}`, true);
+  }
+});
+
 // ---------------------------------------------------------------------------
-// Preferencias
+// Zonas del usuario: prohibidas (polígono) y de amenaza (disco con p)
 // ---------------------------------------------------------------------------
-const CAMPOS_NUMERICOS = ['altura_vuelo_m', 'margen_vertical_m', 'viento_max_m_s', 'velocidad_crucero_m_s',
-  'desvio_max', 'presupuesto_extra', 'peso_riesgo'];
+const dibujo = { modo: null, vertices: [], previa: null };
+
+function terminarDibujo() {
+  dibujo.modo = null;
+  dibujo.vertices = [];
+  if (dibujo.previa) dibujo.previa.remove();
+  dibujo.previa = null;
+  mapa.doubleClickZoom.enable();
+  $('btn-zona-prohibida').classList.remove('activo');
+  $('btn-zona-amenaza').classList.remove('activo');
+  $('btn-terminar-zona').hidden = true;
+  $('txt-dibujo').textContent = '';
+  mapa.getContainer().classList.remove('dibujando');
+}
+
+function empezarDibujo(modo) {
+  const mismo = dibujo.modo === modo;
+  terminarDibujo();
+  if (mismo) return;
+  modoAnadir = false;
+  dibujo.modo = modo;
+  mapa.getContainer().classList.add('dibujando');
+  if (modo === 'prohibida') {
+    mapa.doubleClickZoom.disable();
+    $('btn-zona-prohibida').classList.add('activo');
+    $('btn-terminar-zona').hidden = false;
+    $('txt-dibujo').textContent = 'Pulsa los vértices en el mapa; doble clic (o «Cerrar el polígono») para terminar.';
+  } else {
+    $('btn-zona-amenaza').classList.add('activo');
+    $('txt-dibujo').textContent = 'Pulsa en el mapa el centro de la zona de amenaza.';
+  }
+}
+
+function agregarVertice(ll) {
+  const ultimo = dibujo.vertices[dibujo.vertices.length - 1];
+  if (ultimo && Math.abs(ultimo[0] - ll.lat) < 1e-7 && Math.abs(ultimo[1] - ll.lng) < 1e-7) return;
+  dibujo.vertices.push([ll.lat, ll.lng]);
+  if (dibujo.previa) dibujo.previa.remove();
+  dibujo.previa = L.polyline(dibujo.vertices, { color: MOTIVOS.zona_usuario.color, weight: 2, dashArray: '4 4' }).addTo(mapa);
+}
+
+function cerrarPoligono() {
+  if (dibujo.vertices.length >= 3) {
+    estado.zonas.push({ tipo: 'prohibida', vertices: dibujo.vertices.slice() });
+    zonasCambiaron();
+  }
+  terminarDibujo();
+}
+
+function crearAmenaza(ll) {
+  const radio = Number($('zona-radio').value) || 400;
+  const p = Math.min(0.99, Math.max(0.01, Number($('zona-p').value) || 0.5));
+  estado.zonas.push({ tipo: 'amenaza', lat: ll.lat, lon: ll.lng, radio_m: radio, p });
+  terminarDibujo();
+  zonasCambiaron();
+}
+
+function zonasCambiaron() {
+  dibujarZonas();
+  if (estado.ultimo) $('txt-recalcular').hidden = false;
+}
+
+function dibujarZonas() {
+  capa.zonas_usuario.clearLayers();
+  estado.zonas.forEach((z, i) => {
+    const comun = { bubblingMouseEvents: false };
+    const boton = `<br><button type="button" class="mini" data-quitar-zona="${i}">Quitar esta zona</button>`;
+    const l = z.tipo === 'prohibida'
+      ? L.polygon(z.vertices, { ...comun, color: MOTIVOS.zona_usuario.color, weight: 2, fillOpacity: 0.12, dashArray: '6 4' })
+        .bindPopup(`<b>Zona prohibida ${i + 1}</b><br>Ningún tramo que la toque es sobrevolable.${boton}`)
+      : L.circle([z.lat, z.lon], { ...comun, radius: z.radio_m, color: '#d97706', weight: 2, fillColor: '#f59e0b', fillOpacity: 0.2 })
+        .bindPopup(`<b>Zona de amenaza ${i + 1}</b> (modelo abstracto)<br>radio ${num(z.radio_m, 0)} m · p de falla ${num(z.p, 2)}
+          al tocarla<br>Se suma a la p de cada tramo y nodo que toca.${boton}`);
+    l.addTo(capa.zonas_usuario);
+  });
+  const nP = estado.zonas.filter((z) => z.tipo === 'prohibida').length;
+  const nA = estado.zonas.length - nP;
+  $('txt-zonas').textContent = estado.zonas.length
+    ? `${nP} zona${nP === 1 ? '' : 's'} prohibida${nP === 1 ? '' : 's'} y ${nA} de amenaza. Pulsa una zona para quitarla.`
+    : 'Sin zonas.';
+}
+
+mapa.on('popupopen', (ev) => {
+  const b = ev.popup.getElement().querySelector('[data-quitar-zona]');
+  if (b) b.addEventListener('click', () => { estado.zonas.splice(Number(b.dataset.quitarZona), 1); mapa.closePopup(); zonasCambiaron(); });
+});
+
+$('btn-zona-prohibida').addEventListener('click', () => empezarDibujo('prohibida'));
+$('btn-zona-amenaza').addEventListener('click', () => empezarDibujo('amenaza'));
+$('btn-terminar-zona').addEventListener('click', cerrarPoligono);
+$('btn-borrar-zonas').addEventListener('click', () => { estado.zonas = []; terminarDibujo(); zonasCambiaron(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') terminarDibujo(); });
+
+mapa.on('click', (e) => {
+  if (modoAnadir) { anadirPunto(e.latlng); return; }
+  if (dibujo.modo === 'prohibida') { agregarVertice(e.latlng); return; }
+  if (dibujo.modo === 'amenaza') { crearAmenaza(e.latlng); return; }
+  if (!estado.origen || estado.destino) {
+    quitar('destino');
+    fijar('origen', e.latlng);
+  } else {
+    fijar('destino', e.latlng);
+  }
+});
+mapa.on('dblclick', () => { if (dibujo.modo === 'prohibida') cerrarPoligono(); });
+
+// ---------------------------------------------------------------------------
+// Restricciones del usuario (punto 3)
+// ---------------------------------------------------------------------------
+const CAMPOS = ['altura_vuelo_m', 'margen_vertical_m', 'autonomia_km', 'prob_exito_min', 'viento_max_m_s',
+  'velocidad_crucero_m_s', 'desvio_max', 'presupuesto_extra', 'peso_riesgo'];
+const CAMPOS_ACO = ['n_hormigas', 'iteraciones', 'alfa', 'beta', 'gamma', 'rho', 'semilla'];
 
 function llenarPreferencias(p) {
   const f = $('form-prefs');
-  CAMPOS_NUMERICOS.forEach((c) => { f.elements[c].value = p[c]; });
-  f.elements.respetar_zonas_restringidas.checked = !!p.respetar_zonas_restringidas;
+  CAMPOS.forEach((c) => { if (c in p) f.elements[c].value = p[c] ?? ''; });
+  if ('respetar_zonas_restringidas' in p) f.elements.respetar_zonas_restringidas.checked = !!p.respetar_zonas_restringidas;
 }
 
 function leerPreferencias() {
   const f = $('form-prefs');
   const p = {};
-  CAMPOS_NUMERICOS.forEach((c) => {
+  CAMPOS.forEach((c) => {
     const v = f.elements[c].value;
     if (v !== '') p[c] = Number(v);
   });
   p.respetar_zonas_restringidas = f.elements.respetar_zonas_restringidas.checked;
   return p;
 }
+
+function leerACO() {
+  const f = $('form-prefs');
+  const a = {};
+  CAMPOS_ACO.forEach((c) => { const v = f.elements[`aco_${c}`].value; if (v !== '') a[c] = Number(v); });
+  return a;
+}
+
+function aplicarPerfil(clave) {
+  const perfil = estado.perfiles[clave] || {};
+  const valores = { ...estado.defecto };
+  Object.entries(perfil).forEach(([k, v]) => { if (k !== 'nombre') valores[k] = v; });
+  llenarPreferencias(valores);
+}
+
+$('sel-perfil').addEventListener('change', (e) => aplicarPerfil(e.target.value));
+$('btn-defecto').addEventListener('click', () => { if (estado.defecto) aplicarPerfil($('sel-perfil').value); });
 
 function textoViento(v) {
   if (!v || vacio(v.velocidad_a_altura_vuelo_m_s)) return (v && v.nota) || 'Sin datos de viento.';
@@ -263,23 +591,329 @@ function textoViento(v) {
     + `desde ${num(v.direccion_desde_grados, 0)}°.`;
 }
 
-$('btn-defecto').addEventListener('click', () => { if (estado.defecto) llenarPreferencias(estado.defecto); });
-
-// ---------------------------------------------------------------------------
-// Resultado
-// ---------------------------------------------------------------------------
 function mostrarEstado(texto, error = false) {
   const p = $('txt-estado');
   p.textContent = texto;
   p.className = error ? 'aviso error' : 'ayuda';
 }
 
-function dibujarRutas(grupo, res, ajustar) {
+// ---------------------------------------------------------------------------
+// Las cuatro técnicas (puntos 6 y 8)
+// ---------------------------------------------------------------------------
+function cuerpoConsulta() {
+  const f = $('form-prefs');
+  return {
+    origen: estado.origen,
+    destino: estado.destino,
+    puntos: $('chk-puntos').checked ? (estado.puntos || []) : [],
+    preferencias: leerPreferencias(),
+    considerar: { ...estado.considerar },
+    zonas_prohibidas: estado.zonas.filter((z) => z.tipo === 'prohibida').map((z) => ({ vertices: z.vertices.map(([lat, lon]) => ({ lat, lon })) })),
+    zonas_amenaza: estado.zonas.filter((z) => z.tipo === 'amenaza').map(({ lat, lon, radio_m, p }) => ({ lat, lon, radio_m, p })),
+    aco: leerACO(),
+    n_sorteos: vacio(f.elements.n_sorteos.value) ? 300 : Number(f.elements.n_sorteos.value),
+    prob_deteccion: vacio(f.elements.prob_deteccion.value) ? 0.5 : Number(f.elements.prob_deteccion.value),
+  };
+}
+
+function popupTecnica(r) {
+  const t = TECNICAS[r.clave];
+  return `<b style="color:${t.color}">${esc(t.nombre)}</b><table class="popup">
+    <tr><th>largo</th><td>${num(r.largo_m, 0)} m</td></tr>
+    <tr><th>tiempo de vuelo</th><td>${num(r.tiempo_vuelo_min, 1)} min</td></tr>
+    <tr><th>fiabilidad F</th><td>${num(r.fiabilidad, 4)}</td></tr>
+    <tr><th>resiliencia R</th><td>${pct(r.resiliencia, 1)}</td></tr>
+    <tr><th>cómputo</th><td>${num(r.tiempo_ms, 1)} ms</td></tr>
+    <tr><th>autonomía / R<sub>min</sub></th><td>${si(r.cumple_autonomia)} / ${si(r.cumple_fiabilidad)}</td></tr></table>`;
+}
+
+function dibujarTecnicas(res, ajustar) {
+  const lineas = [];
+  Object.keys(TECNICAS).forEach((k) => capa[`ruta_${k}`].clearLayers());
+  (res.tecnicas || []).forEach((r) => {
+    if (!r.coordenadas) return;
+    const t = TECNICAS[r.clave];
+    const linea = L.polyline(r.coordenadas, { color: t.color, weight: t.peso, opacity: t.opacidad, dashArray: t.dash })
+      .bindPopup(popupTecnica(r));
+    linea.addTo(capa[`ruta_${r.clave}`]);
+    lineas.push(linea);
+  });
+  if (ajustar && lineas.length) mapa.fitBounds(L.featureGroup(lineas).getBounds(), { padding: [40, 40] });
+}
+
+function dibujarExcluidas(res) {
+  capa.excluidas.clearLayers();
+  (res.excluidas || []).forEach((x) => {
+    const l = estado.capaArista[x.id];
+    if (!l) return;
+    L.polyline(l.getLatLngs(), { color: MOTIVOS[x.motivo].color, weight: 3, opacity: 0.9, dashArray: '1 5', lineCap: 'round' })
+      .bindPopup(`<b>Tramo ${x.id}: no sobrevolable</b><br>${esc(MOTIVOS[x.motivo].texto)}`
+        + (vacio(x.obstaculo_m) ? '' : `<br>obstáculo ${num(x.obstaculo_m, 1)} m sobre el despegue ≥ ${num(x.umbral_m, 1)} m`))
+      .addTo(capa.excluidas);
+  });
+}
+
+function detalleTecnica(r, milp) {
+  const d = r.detalle || {};
+  const tramos = d.tramos || [d];
+  const suma = (k) => tramos.reduce((a, x) => a + (Number(x[k]) || 0), 0);
+  const brecha = milp && milp.objetivo_km_eq && r.objetivo_km_eq ? 100 * (r.objetivo_km_eq / milp.objetivo_km_eq - 1) : null;
+  const brechaTxt = brecha === null || r.clave === 'milp_gurobi' ? '' : ` Objetivo frente al óptimo del MILP: ${brecha > 0 ? '+' : ''}${num(brecha, 2)} %.`;
+  if (r.clave === 'dijkstra_m') {
+    return `Costo = <code>largo_m</code> en ambos sentidos; ignora amenazas, viento, autonomía y R<sub>min</sub>.${brechaTxt}
+      <br><code class="sql">${esc(tramos[0].consulta || '')}</code>`;
+  }
+  if (r.clave === 'milp_gurobi') {
+    const t0 = tramos[0];
+    return `Estado: ${esc(t0.estado || '—')}; ${num(suma('n_variables'), 0)} variables binarias y ${num(suma('n_restricciones'), 0)}
+      restricciones (licencia restringida: ${num(t0.limite_licencia, 0)}); poda exacta por elipse: ${num(suma('arcos_tras_poda'), 0)}
+      de ${num(suma('arcos_sobrevolables'), 0)} arcos; tiempo de Gurobi ${num(suma('runtime_gurobi_ms'), 1)} ms; brecha ${num(t0.gap, 4)}.
+      ${tramos.some((x) => x.modelo_secundario) ? '<br><b>R<sub>min</sub> no alcanzable</b>: se resolvió máxima fiabilidad dentro de la autonomía.' : ''}
+      ${t0.nota ? `<br>${esc(t0.nota)}` : ''}`;
+  }
+  if (r.clave === 'dijkstra_ponderado') {
+    return `Costo = 1000 · (c + λ · l), con c = km con viento y l = −ln(1 − p). λ = ${tramos.map((x) => num(x.lambda_m, 0)).join(' / ')} m,
+      hallado por bisección (${num(suma('llamadas_dijkstra'), 0)} llamadas a <code>pgr_dijkstra</code>).${brechaTxt}
+      ${tramos.some((x) => x.cumple_fiabilidad === false) ? '<br>Ni con el mayor λ se alcanza R<sub>min</sub>.' : ''}
+      <br><code class="sql">${esc(tramos[0].consulta || '')}</code>`;
+  }
+  const p = tramos[0].parametros || {};
+  return `${num(suma('iteraciones'), 0)} iteraciones (mejor en la ${tramos.map((x) => num(x.mejor_iteracion, 0)).join(' / ')}),
+    ${num(suma('hormigas_validas'), 0)} de ${num(suma('hormigas_totales'), 0)} hormigas llegaron al destino.
+    Parámetros: ${num(p.n_hormigas, 0)} hormigas, α = ${num(p.alfa)}, β = ${num(p.beta)}, γ = ${num(p.gamma)}, ρ = ${num(p.rho)},
+    semilla ${esc(p.semilla)}.${brechaTxt}${tramos.some((x) => x.factible === false) ? '<br><b>La mejor ruta viola una restricción.</b>' : ''}`;
+}
+
+function mostrarT3(res) {
+  const milp = (res.tecnicas || []).find((r) => r.clave === 'milp_gurobi' && r.coordenadas);
+  const filas = (res.tecnicas || []).map((r) => {
+    const t = TECNICAS[r.clave];
+    const estrella = res.mas_resiliente === r.clave ? '★ ' : '';
+    if (!r.coordenadas) return `<tr><td>${t.nombre}</td><td colspan="6">${esc(r.error || 'sin ruta')}</td></tr>`;
+    return `<tr class="${estrella ? 'mejor' : ''}"><td><span class="linea" style="border-color:${t.color};border-top-style:${t.dash ? 'dashed' : 'solid'}"></span>${estrella}${t.nombre}</td>
+      <td>${num(r.largo_km, 2)}</td><td>${num(r.tiempo_vuelo_min, 1)}</td><td>${num(r.fiabilidad, 3)}</td>
+      <td><b>${pct(r.resiliencia, 1)}</b></td><td>${si(r.cumple_autonomia)}${si(r.cumple_fiabilidad)}</td><td>${num(r.tiempo_ms, 1)}</td></tr>`;
+  });
+  const ev = res.resiliencia || {};
+  const difs = Object.entries(ev.diferencial_vs_dijkstra_m || {}).map(([k, d]) => {
+    const v = Number(d.delta_R_pp);
+    return `<li>${esc(TECNICAS[k].nombre)}: <strong class="${v > 0 ? 'pos' : (v < 0 ? 'neg' : '')}">${v > 0 ? '+' : ''}${num(v, 1)} pp</strong>
+      <span class="ayuda">(solo ella completa ${esc(d.solo_tecnica_completa)}, solo Dijkstra ${esc(d.solo_dijkstra_m_completa)}; McNemar p ${d.p_mcnemar < 1e-4 ? '< 0,0001' : `= ${num(d.p_mcnemar, 4)}`})</span></li>`;
+  });
+  const motivos = {};
+  (res.excluidas || []).forEach((x) => { motivos[x.motivo] = (motivos[x.motivo] || 0) + 1; });
+  const txtMotivos = Object.entries(motivos).map(([m, n]) => `${n} por ${m.replace('_', ' ')}`).join(', ') || 'ninguno';
+  const activas = (res.probabilidades && res.probabilidades.activas) || [];
+  const avisos = (res.advertencias || []).map((a) => `<div class="aviso">${esc(a)}</div>`).join('');
+  const mejor = res.mas_resiliente ? TECNICAS[res.mas_resiliente].nombre : '—';
+  const detalles = (res.tecnicas || []).filter((r) => r.coordenadas).map((r) => `<details><summary>${TECNICAS[r.clave].nombre}</summary>
+    <p class="ayuda">${detalleTecnica(r, milp)}</p></details>`).join('');
+  $('contenido-t3').innerHTML = `
+    ${avisos}
+    <table>
+      <thead><tr><th>Técnica</th><th>km</th><th>vuelo (min)</th><th>F</th><th>R</th><th>aut. / R<sub>min</sub></th><th>cómputo (ms)</th></tr></thead>
+      <tbody>${filas.join('')}</tbody>
+    </table>
+    <p>Más resiliente: <strong>★ ${esc(mejor)}</strong></p>
+    <p class="ayuda">Nodos ${esc((res.secuencia || []).join(' → '))}. Autonomía ${num(res.autonomia_km)} km (ruta sobrevolable más corta:
+      ${num(res.largo_minimo_km)} km); R<sub>min</sub> = ${num(res.r_min, 2)}. Amenazas consideradas: ${esc(activas.join(', ') || 'ninguna')}.
+      Tramos no sobrevolables: ${(res.excluidas || []).length} (${esc(txtMotivos)}).</p>
+    <p class="ayuda"><b>F</b> = ∏(1 − p) de tramos y nodos de la ruta. <b>R</b> = misiones completadas dentro de la autonomía en
+      ${esc(ev.n_sorteos ?? 0)} sorteos 0–100 (los mismos para las cuatro): el UAV nota cada falla antes de entrar con probabilidad
+      ${num(ev.prob_deteccion, 2)} y se desvía con Dijkstra ponderado; si no la nota, se pierde.</p>
+    <h3>Diferencia de resiliencia frente a pgr_dijkstra (metros)</h3>
+    <ul class="difs">${difs.join('')}</ul>
+    <h3>Cómo resolvió cada técnica</h3>
+    ${detalles}`;
+}
+
+async function calcular() {
+  if (!estado.origen || !estado.destino) {
+    mostrarEstado('Define el origen y el destino haciendo clic en el mapa (o usa la misión).', true);
+    return null;
+  }
+  const cuerpo = cuerpoConsulta();
+  const boton = $('btn-calcular');
+  boton.disabled = true;
+  mostrarEstado('Calculando las cuatro técnicas y los sorteos de resiliencia…');
+  try {
+    const res = await postJSON('/api/t3/rutas', cuerpo);
+    await CARGADORES.aristas();
+    estado.ultimo = res;
+    estado.ultimoCuerpo = cuerpo;
+    estado.sorteo = null;
+    capa.fallas.clearLayers();
+    capa.vuelos.clearLayers();
+    $('contenido-sorteo').innerHTML = '';
+    $('txt-sorteo').textContent = 'Listo para sortear.';
+    $('txt-recalcular').hidden = true;
+    dibujarTecnicas(res, true);
+    dibujarExcluidas(res);
+    recolorear();
+    mostrarT3(res);
+    actualizarLeyenda();
+    if (res.viento) pintarViento(res.viento);
+    mostrarEstado(res.id_evaluacion ? `Guardado en la BD (evaluación ${res.id_evaluacion} de evaluaciones_t3).` : 'Listo.');
+    return res;
+  } catch (e) {
+    mostrarEstado(`Error: ${e.message}`, true);
+    return null;
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+$('form-prefs').addEventListener('submit', (ev) => { ev.preventDefault(); calcular(); });
+
+// ---------------------------------------------------------------------------
+// Sorteo 0-100 (punto 7)
+// ---------------------------------------------------------------------------
+function textoVuelo(r) {
+  const rec = r.recuperacion;
+  if (r.intacta) return rec.exito ? `Intacta: completa (${num(rec.km, 2)} km)` : 'Intacta, pero excede la autonomía';
+  const desvios = (rec.desvios || []).length;
+  if (rec.exito) return `Notó ${desvios} falla${desvios === 1 ? '' : 's'}, se desvió y completó (${num(rec.km, 2)} km)`;
+  if (rec.motivo === 'perdido') return `Entró sin notarla al ${esc(rec.perdido_en.tipo)} ${esc(rec.perdido_en.id)}: UAV perdido`;
+  if (rec.motivo === 'sin_alternativa') return 'Notó la falla, pero no quedó ruta';
+  if (rec.motivo === 'autonomia') return 'Se desvió, pero agotó la autonomía';
+  return esc(rec.motivo);
+}
+
+function dibujarSorteo(s) {
+  capa.fallas.clearLayers();
+  capa.vuelos.clearLayers();
+  s.tramos_fallados.forEach((x) => {
+    const l = estado.capaArista[x.id];
+    if (!l) return;
+    L.polyline(l.getLatLngs(), { color: '#dc2626', weight: 6, opacity: 0.9, dashArray: '6 5' })
+      .bindPopup(`<b>Tramo ${x.id} falla</b><br>n = ${num(x.n, 3)} &gt; umbral ${num(x.umbral, 3)} (p = ${num(x.p, 5)})`)
+      .addTo(capa.fallas);
+  });
+  s.nodos_fallados.forEach((x) => {
+    L.marker([x.lat, x.lon], { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9], html: '<span class="nodo-falla">✕</span>' }) })
+      .bindPopup(`<b>Nodo ${x.id} falla</b><br>n = ${num(x.n, 3)} &gt; umbral ${num(x.umbral, 3)} (p = ${num(x.p, 5)})<br>Sus tramos quedan inutilizables.`)
+      .addTo(capa.fallas);
+  });
+  Object.entries(s.por_tecnica).forEach(([k, r]) => {
+    const rec = r.recuperacion;
+    if (!rec.coordenadas || rec.coordenadas.length < 1) return;
+    const t = TECNICAS[k];
+    if (rec.coordenadas.length > 1) {
+      L.polyline(rec.coordenadas, { color: t.color, weight: 3, opacity: 1, dashArray: '1 6', lineCap: 'round' })
+        .bindPopup(`<b>${esc(t.nombre)}</b> tras el sorteo: ${textoVuelo(r)}`).addTo(capa.vuelos);
+    }
+    const fin = rec.coordenadas[rec.coordenadas.length - 1];
+    const icono = rec.exito ? '✓' : '✕';
+    L.marker(fin, { icon: L.divIcon({ className: '', iconSize: [20, 20], iconAnchor: [10, 10],
+      html: `<span class="fin-vuelo" style="background:${t.color}">${icono}</span>` }) })
+      .bindPopup(`<b>${esc(t.nombre)}</b>: ${textoVuelo(r)}`).addTo(capa.vuelos);
+  });
+}
+
+function mostrarSorteo(s) {
+  const filas = Object.entries(s.por_tecnica).map(([k, r]) => {
+    const t = TECNICAS[k];
+    const pf = r.primer_fallo;
+    const primero = pf ? `${pf.tipo} ${pf.id}: n = ${num(pf.n, 2)} &gt; ${num(pf.umbral, 2)}` : '—';
+    return `<tr><td><span class="linea" style="border-color:${t.color};border-top-style:${t.dash ? 'dashed' : 'solid'}"></span>${t.nombre}</td>
+      <td>${si(r.intacta)}</td><td>${primero}</td><td>${si(r.recuperacion.exito)} ${textoVuelo(r)}</td></tr>`;
+  });
+  $('contenido-sorteo').innerHTML = `
+    <p class="ayuda">Semilla ${esc(s.semilla)}: fallan <b>${s.tramos_fallados.length}</b> de ${s.n_tramos} tramos y
+      <b>${s.nodos_fallados.length}</b> de ${s.n_nodos} nodos (${esc(s.regla)}). Prob. de notar una falla antes de entrar:
+      ${num(s.prob_deteccion, 2)}.</p>
+    <table>
+      <thead><tr><th>Técnica</th><th>intacta</th><th>primer fallo</th><th>vuelo</th></tr></thead>
+      <tbody>${filas.join('')}</tbody>
+    </table>
+    <p class="ayuda">En el mapa: tramos que fallan en rojo discontinuo, nodos que fallan con ✕ y el vuelo de cada ruta afectada
+      con su color (✓ completó, ✕ no). Pulsa un tramo o nodo para ver su número sorteado y su umbral.</p>`;
+}
+
+async function sortear(semilla) {
+  if (!estado.ultimo || !estado.ultimoCuerpo) {
+    $('txt-sorteo').textContent = 'Primero calcula las rutas.';
+    return null;
+  }
+  if (!vacio(semilla)) $('sorteo-semilla').value = semilla;
+  const rutas = {};
+  (estado.ultimo.tecnicas || []).forEach((r) => { if (r.nodos) rutas[r.clave] = r.nodos; });
+  const cuerpo = { ...estado.ultimoCuerpo, semilla: Number($('sorteo-semilla').value) || 0, rutas,
+    lambda_recuperacion_km: estado.ultimo.lambda_recuperacion_km };
+  const boton = $('btn-sortear');
+  boton.disabled = true;
+  $('txt-sorteo').textContent = 'Sorteando…';
+  try {
+    const s = await postJSON('/api/t3/sorteo', cuerpo);
+    estado.sorteo = s;
+    dibujarSorteo(s);
+    mostrarSorteo(s);
+    $('txt-sorteo').textContent = 'Sorteo listo.';
+    return s;
+  } catch (e) {
+    $('txt-sorteo').textContent = `Error: ${e.message}`;
+    return null;
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+$('btn-sortear').addEventListener('click', () => sortear());
+$('btn-nueva-semilla').addEventListener('click', () => sortear(Math.floor(Math.random() * 1e6)));
+
+// ---------------------------------------------------------------------------
+// Caso de ejemplo (punto 9)
+// ---------------------------------------------------------------------------
+async function cargarCaso() {
+  const boton = $('btn-caso');
+  boton.disabled = true;
+  try {
+    const caso = await pedir('/api/t3/caso_ejemplo');
+    terminarDibujo();
+    $('sel-perfil').value = caso.perfil;
+    aplicarPerfil(caso.perfil);
+    llenarPreferencias(caso.preferencias);  // el caso fija R_min para que, sin la amenaza, la ruta corta ya cumpla
+    $('chk-puntos').checked = false;
+    Object.keys(estado.considerar).forEach((k) => { estado.considerar[k] = true; });
+    $('panel-capas').querySelectorAll('[data-considerar]').forEach((el) => { el.checked = true; });
+    fijar('origen', L.latLng(caso.origen.lat, caso.origen.lon));
+    fijar('destino', L.latLng(caso.destino.lat, caso.destino.lon));
+    estado.zonas = [{ tipo: 'amenaza', ...caso.zona_amenaza }];
+    dibujarZonas();
+    const filas = Object.keys(TECNICAS).map((k) => {
+      const a = (caso.etapa1.tecnicas || {})[k] || {};
+      const b = (caso.etapa2.tecnicas || {})[k] || {};
+      return `<tr><td>${TECNICAS[k].nombre}</td><td>${num(a.largo_km, 2)}</td><td>${pct(a.resiliencia, 1)}</td>
+        <td>${num(b.largo_km, 2)} ${b.cruza_zona ? '<span class="no" title="cruza la zona">⚠</span>' : ''}</td><td>${pct(b.resiliencia, 1)}</td></tr>`;
+    });
+    $('contenido-caso').innerHTML = `
+      <p class="ayuda">${esc(caso.descripcion)}</p>
+      <table>
+        <thead><tr><th>Técnica</th><th colspan="2">sin la zona: km · R</th><th colspan="2">con la zona: km · R</th></tr></thead>
+        <tbody>${filas.join('')}</tbody>
+      </table>
+      <p class="ayuda">⚠ = la ruta cruza la zona de amenaza. Sorteo ilustrativo: semilla ${esc(caso.sorteo.semilla)}
+        (${esc(caso.sorteo.criterio)}). Desmarca «considerar» en «Zonas del usuario» y recalcula para ver la etapa sin la zona.</p>
+      ${(caso.objetivos || []).map((o) => `<div class="${o.cumple ? 'ok-caja' : 'aviso'}">${si(o.cumple)} ${esc(o.texto)}</div>`).join('')}`;
+    const res = await calcular();
+    if (res) await sortear(caso.sorteo.semilla);
+  } catch (e) {
+    $('contenido-caso').innerHTML = `<div class="aviso error">No se pudo cargar el caso: ${esc(e.message)}</div>`;
+  } finally {
+    boton.disabled = false;
+  }
+}
+$('btn-caso').addEventListener('click', cargarCaso);
+
+// ---------------------------------------------------------------------------
+// Tarea 2: par Dijkstra + par Yen con selección resiliente
+// ---------------------------------------------------------------------------
+function dibujarRutasT2(grupo, res, ajustar) {
   grupo.clearLayers();
   const lineas = [];
   const dibujar = (rutas, color, metodo) => (rutas || []).forEach((r, i) => {
     const linea = L.polyline(r.coordenadas, { color, weight: i === 0 ? 5 : 4, opacity: 0.9, dashArray: i === 0 ? null : '8 6' })
-      .bindTooltip(`${metodo}, ruta ${i + 1}: ${num(r.largo_km)} km`);
+      .bindTooltip(`${metodo} (Tarea 2), ruta ${i + 1}: ${num(r.largo_km)} km`);
     linea.addTo(grupo);
     lineas.push(linea);
   });
@@ -293,7 +927,7 @@ function filaRuta(clase, i, metodo, r) {
     + `<td>${num(r.largo_km)}</td><td>${num(r.costo)}</td><td>${num(r.riesgo_medio, 3)}</td></tr>`;
 }
 
-function mostrarResultado(res, titulo) {
+function mostrarResultadoT2(res, titulo) {
   const ev = res.resiliencia || {};
   const rPar = ev.r_par || {};
   const rMis = ev.r_mision || {};
@@ -304,100 +938,77 @@ function mostrarResultado(res, titulo) {
     ...(res.propuesta || []).map((r, i) => filaRuta('prop', i, 'Propuesta', r)),
   ];
   const avisos = (res.advertencias || []).map((a) => `<div class="aviso">${esc(a)}</div>`).join('');
-  const delta = Number(dCA.delta_R_pp);
-  const clase = delta > 0 ? 'pos' : (delta < 0 ? 'neg' : '');
-  const sel = res.seleccion;
-  const textoSel = sel
-    ? `<p class="ayuda">Selección del par: J = ${num(sel.J, 3)} (estiramiento ${num(sel.estiramiento, 3)}, solape ${num(sel.solape, 3)}, `
-      + `riesgo ${num(sel.riesgo, 3)}; ${num(sel.candidatas, 0)} candidatas de pgr_KSP, ${num(sel.validas, 0)} dentro del desvío).</p>`
-    : '';
   $('contenido-resultado').innerHTML = `
-    <h3>${esc(titulo)}</h3>
-    <p class="ayuda">Nodos ${esc(res.origen)} → ${esc(res.destino)}. Tramos excluidos por restricciones: ${(res.aristas_excluidas || []).length}.
-      ${esc(textoViento(res.viento))}</p>
-    ${avisos}
+    <h3>${esc(titulo)}</h3>${avisos}
     <table>
       <thead><tr><th>Ruta</th><th>km</th><th>costo</th><th>riesgo medio</th></tr></thead>
       <tbody>${filas.join('')}</tbody>
     </table>
-    ${textoSel}
-    <h3>Resiliencia en ${esc(ev.n_escenarios ?? '—')} escenarios con ${esc(ev.n_fallas ?? '—')} fallas cada uno</h3>
     <table>
-      <thead><tr><th>Métrica</th><th>Dijkstra</th><th>Propuesta</th><th>Δ pp</th></tr></thead>
+      <thead><tr><th>Métrica (Tarea 2)</th><th>Dijkstra</th><th>Propuesta</th><th>Δ pp</th></tr></thead>
       <tbody>
-        <tr><td>R_par: alguna ruta del par queda libre</td><td>${pct(rPar.dijkstra)}</td><td>${pct(rPar.propuesta)}</td><td>${num(ev.delta_r_par_pp, 1)}</td></tr>
-        <tr><td>R_misión: llega dentro del presupuesto</td><td>${pct(rMis.A_dijkstra_fijo)}</td><td>${pct(rMis.C_propuesta)}</td><td>${num(dCA.delta_R_pp, 1)}</td></tr>
-        <tr><td>Ablación D: Dijkstra que replanifica</td><td>${pct(rMis.D_dijkstra_replan)}</td><td></td><td>${num(dCD.delta_R_pp, 1)} (C−D)</td></tr>
+        <tr><td>R_par</td><td>${pct(rPar.dijkstra)}</td><td>${pct(rPar.propuesta)}</td><td>${num(ev.delta_r_par_pp, 1)}</td></tr>
+        <tr><td>R_misión</td><td>${pct(rMis.A_dijkstra_fijo)}</td><td>${pct(rMis.C_propuesta)}</td><td>${num(dCA.delta_R_pp, 1)}</td></tr>
+        <tr><td>Ablación D</td><td>${pct(rMis.D_dijkstra_replan)}</td><td></td><td>${num(dCD.delta_R_pp, 1)} (C−D)</td></tr>
       </tbody>
-    </table>
-    <p>Diferencial de resiliencia ΔR = R(C) − R(A):
-      <span class="delta ${clase}">${delta > 0 ? '+' : ''}${num(dCA.delta_R_pp, 1)} pp</span><br>
-      <span class="ayuda">McNemar p = ${num(dCA.p_mcnemar, 4)}: ${esc(dCA.solo_metodo_completa ?? 0)} escenarios solo los completa la propuesta
-      y ${esc(dCA.solo_referencia_completa ?? 0)} solo Dijkstra.</span></p>
-    <p class="ayuda">Presupuesto ${num(ev.presupuesto_km)} km = (1 + β) × ${num(ev.largo_minimo_km)} km.
-      Focos de las fallas: ${esc(ev.origen_focos)} (${esc(ev.n_focos ?? 0)}).</p>`;
+    </table>`;
 }
 
-$('form-prefs').addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  if (!estado.origen || !estado.destino) {
-    mostrarEstado('Define el origen y el destino haciendo clic en el mapa (o usa la misión).', true);
-    return;
-  }
-  const f = $('form-prefs');
-  const cuerpo = {
-    origen: estado.origen,
-    destino: estado.destino,
-    preferencias: leerPreferencias(),
-    n_fallas: Number(f.elements.n_fallas.value) || 3,
-    n_escenarios: Number(f.elements.n_escenarios.value) || 100,
-  };
-  const boton = $('btn-calcular');
+$('btn-yen').addEventListener('click', async () => {
+  if (!estado.origen || !estado.destino) { $('txt-yen').textContent = 'Define el origen y el destino.'; return; }
+  const boton = $('btn-yen');
   boton.disabled = true;
-  mostrarEstado('Calculando rutas en la BD y simulando escenarios de fallas…');
+  $('txt-yen').textContent = 'Calculando el par de la Tarea 2…';
   try {
-    const res = await pedir('/api/rutas', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
-    });
-    dibujarRutas(capaCalculadas, res, true);
-    mostrarResultado(res, 'Rutas calculadas');
-    mostrarEstado(res.id_evaluacion ? `Guardado en la BD (evaluación ${res.id_evaluacion}).` : 'Listo.');
+    const res = await postJSON('/api/rutas', { origen: estado.origen, destino: estado.destino, preferencias: leerPreferencias() });
+    dibujarRutasT2(capa.yen, res, true);
+    verCapa('yen', true);
+    mostrarResultadoT2(res, 'Par Yen (Tarea 2)');
+    $('txt-yen').textContent = '';
   } catch (e) {
-    mostrarEstado(`Error: ${e.message}`, true);
+    $('txt-yen').textContent = `Error: ${e.message}`;
   } finally {
     boton.disabled = false;
   }
 });
 
 // ---------------------------------------------------------------------------
-// Inicio: preferencias por defecto y ejemplo de la misión
+// Inicio
 // ---------------------------------------------------------------------------
 (async function iniciar() {
   try {
-    const p = await pedir('/api/preferencias');
-    estado.defecto = p.preferencias;
-    llenarPreferencias(p.preferencias);
-    $('txt-viento').textContent = textoViento(p.viento);
+    const [t3, prefs] = await Promise.all([pedir('/api/t3/perfiles'), pedir('/api/preferencias')]);
+    estado.perfiles = t3.perfiles;
+    estado.defecto = t3.preferencias;
+    Object.assign(estado.considerar, t3.considerar);
+    $('sel-perfil').innerHTML = Object.entries(t3.perfiles).map(([k, p]) => `<option value="${k}">${esc(p.nombre)}</option>`).join('');
+    $('sel-perfil').value = 'inspeccion';
+    aplicarPerfil('inspeccion');
+    const f = $('form-prefs');
+    CAMPOS_ACO.forEach((c) => { f.elements[`aco_${c}`].value = t3.aco[c]; });
+    f.elements.n_sorteos.value = t3.resiliencia.n_sorteos;
+    f.elements.prob_deteccion.value = t3.resiliencia.prob_deteccion;
+    construirPanel();
+    $('txt-viento').textContent = textoViento(prefs.viento);
+    pintarViento(prefs.viento);
+    actualizarLeyenda();
+    mostrarEstado('Elige origen y destino (o «Usar la misión») y pulsa «Calcular las 4 rutas». También puedes cargar el caso de ejemplo.');
   } catch (e) {
     mostrarEstado(`No se pudo conectar con la BD: ${e.message}`, true);
     return;
   }
   try {
     const ej = await pedir('/api/ejemplo');
-    dibujarRutas(capaEjemplo, ej, false);
-    mostrarResultado(ej, 'Ejemplo: inicio → destino de la misión, preferencias por defecto');
-    mostrarEstado('Se muestra el ejemplo generado con pgr_dijkstra y pgr_KSP. Elige otro origen y destino para calcular.');
-  } catch (e) {
-    mostrarEstado(`Sin rutas de ejemplo todavía (${e.message}). Elige origen y destino para calcular.`);
-  }
+    dibujarRutasT2(capa.yen, ej, false);
+    mostrarResultadoT2(ej, 'Ejemplo de la misión (Tarea 2)');
+  } catch (_) { /* sin ejemplo de la Tarea 2 */ }
 }());
 
 // ---------------------------------------------------------------------------
-// Flota con aviso compartido: animación del cambio de ruta en tiempo real
+// Tarea 2: flota con aviso compartido (animación del cambio de ruta en tiempo real)
 // ---------------------------------------------------------------------------
 const COLOR_UAV = ['#0f766e', '#2563eb', '#ea580c', '#9333ea', '#db2777'];
-const capaFlota = L.layerGroup().addTo(mapa);
-control.addOverlay(capaFlota, 'Flota con aviso (animación)');
+const capaFlota = capa.flota;
 const anim = { datos: null, modo: 'con_aviso', t: 0, fin: 0, jugando: false, ultimo: null, capas: null, bitacora: [] };
 const FINALES = ['completada', 'perdido_en_interferencia', 'atrapado', 'sin_alternativa', 'presupuesto', 'sin_ruta', 'bucle'];
 
@@ -458,7 +1069,6 @@ function armarCapas() {
   anim.capas = { zonas, uavs, efimeras };
   anim.fin = lt.fin_s;
   $('txt-fin').textContent = num(lt.fin_s, 0);
-  // Bitácora completa, ordenada en el tiempo
   const filas = [];
   lt.uavs.forEach((u, i) => u.eventos.forEach((e) => {
     const def = TEXTO_EVENTO[e.tipo];
@@ -503,7 +1113,6 @@ function dibujarInstante() {
       + `UAV ${i + 1}: ${txt}${cambios ? ` · ${cambios} cambio(s) por aviso` : ''}</div>`);
   });
   $('estado-uav').innerHTML = estadoTxt.join('');
-  // Avisos: pulso en el origen y líneas hacia quienes lo reciben, durante unos segundos
   const ef = anim.capas.efimeras;
   ef.clearLayers();
   const radio = (anim.datos.radio_silencio_km || 0.6) * 1000;
@@ -572,10 +1181,9 @@ function mostrarFlota(res) {
     return `<li>${esc(etiquetaFlota(d.metodo))} frente a ${esc(etiquetaFlota(d.referencia))}: `
       + `<strong class="${v > 0 ? 'pos' : (v < 0 ? 'neg' : '')}">${v > 0 ? '+' : ''}${num(v, 1)} pp</strong> `
       + `<span class="ayuda">(gana ${esc(d.solo_metodo_completa)}, pierde ${esc(d.solo_referencia_completa)}; `
-      + `McNemar p = ${num(d.p_mcnemar, 4)})</span></li>`;
+      + `McNemar p ${d.p_mcnemar < 1e-4 ? '< 0,0001' : `= ${num(d.p_mcnemar, 4)}`})</span></li>`;
   });
   const avisos = (res.advertencias || []).map((a) => `<div class="aviso">${esc(a)}</div>`).join('')
-    // Una misión editada no es comparable con las cifras publicadas en resultados/.
     + (res.secuencia_editada ? '<div class="aviso">Misión editada: estas cifras no son comparables con las'
       + ` del informe, que usan la misión de la base de datos. Secuencia simulada: ${esc((res.secuencia || []).join(' → '))}.</div>` : '');
   const ej = res.escenario_animado || {};
@@ -587,8 +1195,6 @@ function mostrarFlota(res) {
       <thead><tr><th>Estrategia</th><th>R_uav</th><th>seguidores</th><th>perdidos</th><th>cambios por aviso</th><th>demora (s)</th></tr></thead>
       <tbody>${filas.join('')}</tbody>
     </table>
-    <p class="ayuda">R_uav: misiones de UAV completadas. Seguidores: del UAV 2 en adelante, los que pueden aprovechar
-      un aviso. Demora: desde la detección, o la pérdida del UAV, hasta que cada otro UAV se entera.</p>
     <h3>Diferencial en los seguidores</h3>
     <ul class="difs">${difs.join('')}</ul>
     <p class="ayuda">Presupuesto ${num(res.presupuesto_km)} km por UAV = (1 + β) × ${num(res.largo_minimo_km)} km.
@@ -607,7 +1213,6 @@ $('form-flota').addEventListener('submit', async (ev) => {
     n_fallas: Number(f.elements.n_fallas.value) || 3,
     n_escenarios: Number(f.elements.n_escenarios.value) || 30,
   };
-  // Origen, destino y puntos son independientes: lo que no se marque lo pone la misión de la BD.
   if (estado.origen) cuerpo.origen = estado.origen;
   if (estado.destino) cuerpo.destino = estado.destino;
   if (estado.puntos) cuerpo.puntos = estado.puntos;
@@ -616,11 +1221,10 @@ $('form-flota').addEventListener('submit', async (ev) => {
   pausar();
   $('txt-flota').textContent = 'Simulando la flota sin aviso y con aviso…';
   try {
-    anim.datos = await pedir('/api/flota', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
-    });
+    anim.datos = await postJSON('/api/flota', cuerpo);
     anim.t = 0;
     anim.modo = $('sel-modo').value;
+    verCapa('flota', true);
     armarCapas();
     dibujarInstante();
     $('reproductor').hidden = false;
