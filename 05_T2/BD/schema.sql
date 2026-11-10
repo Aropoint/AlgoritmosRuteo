@@ -1,4 +1,4 @@
--- Modelo de datos de la Tarea 2: ruteo físico resiliente de UAV.
+-- Modelo de datos de las Tareas 2 y 3: ruteo físico resiliente de UAV.
 -- Crea la BD desde cero: BORRA las tablas anteriores. Requiere PostGIS y pgRouting.
 -- Uso: python BD/crear_bd.py   (o: psql -d ruteo_uav -f BD/schema.sql)
 -- Explicación del modelo y diagrama: BD/MODELO_BD.md y BD/diagrama_bd.png
@@ -7,8 +7,8 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS pgrouting;
 
 DROP VIEW IF EXISTS v_viento_resumen;
-DROP TABLE IF EXISTS evaluaciones, rutas, amz_eventos, amz_incendios, amz_gpsjam_celdas,
-    meta_viento, meta_elevacion, meta_edificios, mision, aristas, nodos,
+DROP TABLE IF EXISTS evaluaciones_t3, evaluaciones, rutas, amz_eventos, amz_incendios, amz_gpsjam_celdas,
+    meta_zonas_restringidas, meta_viento, meta_elevacion, meta_edificios, mision, aristas, nodos,
     parametros_pesos, fuentes CASCADE;
 
 -- ---------------------------------------------------------------------------
@@ -34,6 +34,15 @@ CREATE TABLE nodos (
     id          integer PRIMARY KEY,              -- source/target de pgRouting
     tipo        text NOT NULL CHECK (tipo IN ('navegacion', 'inicio', 'observacion', 'destino')),
     elevacion_m double precision,                 -- terreno (meta_elevacion); NULL = sin dato
+    -- Intensidad de cada amenaza en el nodo, en [0, 1] (BD/probabilidades.sql)
+    r_eventos   double precision NOT NULL DEFAULT 0 CHECK (r_eventos BETWEEN 0 AND 1),
+    r_incendios double precision NOT NULL DEFAULT 0 CHECK (r_incendios BETWEEN 0 AND 1),
+    p_gnss      double precision NOT NULL DEFAULT 0 CHECK (p_gnss BETWEEN 0 AND 1),
+    -- Probabilidad de falla del nodo por amenaza y combinada (Tarea 3, punto 5)
+    pf_eventos   double precision NOT NULL DEFAULT 0 CHECK (pf_eventos BETWEEN 0 AND 1),
+    pf_incendios double precision NOT NULL DEFAULT 0 CHECK (pf_incendios BETWEEN 0 AND 1),
+    pf_gnss      double precision NOT NULL DEFAULT 0 CHECK (pf_gnss BETWEEN 0 AND 1),
+    pf_total     double precision NOT NULL DEFAULT 0 CHECK (pf_total BETWEEN 0 AND 1),
     geom        geometry(Point, 4326) NOT NULL
 );
 
@@ -41,7 +50,8 @@ CREATE TABLE aristas (
     id                    integer PRIMARY KEY,
     source                integer NOT NULL REFERENCES nodos (id),
     target                integer NOT NULL REFERENCES nodos (id),
-    largo_km              double precision NOT NULL CHECK (largo_km > 0),  -- costo de la línea base
+    largo_km              double precision NOT NULL CHECK (largo_km > 0),  -- costo de la línea base (Tarea 2)
+    largo_m               double precision GENERATED ALWAYS AS (largo_km * 1000) STORED,  -- pgr_dijkstra en metros (Tarea 3)
     rumbo_grados          double precision,       -- de source a target, desde el norte (factor de viento)
     -- Restricciones derivadas de la metadata (NULL = sin dato = no restringe)
     altura_max_edificio_m double precision,       -- edificio más alto a <= buffer_edificio_m del tramo
@@ -52,6 +62,11 @@ CREATE TABLE aristas (
     r_incendios           double precision NOT NULL DEFAULT 0 CHECK (r_incendios BETWEEN 0 AND 1),
     p_gnss                double precision NOT NULL DEFAULT 0 CHECK (p_gnss BETWEEN 0 AND 1),
     riesgo                double precision NOT NULL DEFAULT 0 CHECK (riesgo BETWEEN 0 AND 1),
+    -- Probabilidad de falla del tramo por amenaza y combinada (Tarea 3, punto 5; BD/probabilidades.sql)
+    pf_eventos            double precision NOT NULL DEFAULT 0 CHECK (pf_eventos BETWEEN 0 AND 1),
+    pf_incendios          double precision NOT NULL DEFAULT 0 CHECK (pf_incendios BETWEEN 0 AND 1),
+    pf_gnss               double precision NOT NULL DEFAULT 0 CHECK (pf_gnss BETWEEN 0 AND 1),
+    pf_total              double precision NOT NULL DEFAULT 0 CHECK (pf_total BETWEEN 0 AND 1),
     geom                  geometry(LineString, 4326) NOT NULL,
     CHECK (source <> target)
 );
@@ -85,12 +100,13 @@ CREATE INDEX meta_edificios_geom_idx ON meta_edificios USING gist (geom);
 
 CREATE TABLE meta_elevacion (                     -- Open-Meteo Elevation API (Copernicus DEM GLO-90)
     id          serial PRIMARY KEY,
-    tipo        text NOT NULL CHECK (tipo IN ('nodo', 'punto_medio')),
+    tipo        text NOT NULL CHECK (tipo IN ('nodo', 'muestra')),
     ref_id      integer NOT NULL,                 -- id de nodo o de arista según tipo
+    orden       smallint NOT NULL DEFAULT 0,      -- muestra: posición a lo largo del tramo (1, 2, ...); nodo: 0
     elevacion_m double precision,
     geom        geometry(Point, 4326) NOT NULL,
     fuente_id   integer NOT NULL REFERENCES fuentes (id),
-    UNIQUE (tipo, ref_id)
+    UNIQUE (tipo, ref_id, orden)
 );
 
 CREATE TABLE meta_viento (                        -- Open-Meteo Historical Weather API (ERA5)
@@ -100,6 +116,19 @@ CREATE TABLE meta_viento (                        -- Open-Meteo Historical Weath
     rafaga_10m_m_s   double precision,
     fuente_id        integer NOT NULL REFERENCES fuentes (id)
 );
+
+CREATE TABLE meta_zonas_restringidas (            -- OpenStreetMap (Overpass): aeródromos y helipuertos
+    id        serial PRIMARY KEY,
+    osm_tipo  text NOT NULL CHECK (osm_tipo IN ('node', 'way', 'relation')),
+    osm_id    bigint NOT NULL,
+    clase     text NOT NULL,                      -- valor del tag aeroway
+    nombre    text,
+    buffer_m  double precision NOT NULL DEFAULT 0, -- radio aplicado a los puntos (helipuertos sin contorno)
+    geom      geometry(MultiPolygon, 4326) NOT NULL,
+    fuente_id integer NOT NULL REFERENCES fuentes (id),
+    UNIQUE (osm_tipo, osm_id)
+);
+CREATE INDEX meta_zonas_restringidas_geom_idx ON meta_zonas_restringidas USING gist (geom);
 
 -- ---------------------------------------------------------------------------
 -- 4. Amenazas
@@ -158,7 +187,14 @@ INSERT INTO parametros_pesos (clave, valor, descripcion) VALUES
     ('sigma_eventos_km',   1.0, 'Ancho del núcleo gaussiano de densidad para eventos UCDP (km)'),
     ('sigma_incendios_km', 0.5, 'Ancho del núcleo gaussiano de densidad para incendios de guerra (km)'),
     ('corte_sigmas',       3.0, 'Eventos más lejanos que corte_sigmas * sigma no aportan densidad'),
-    ('buffer_edificio_m', 15.0, 'Distancia máxima entre un tramo y un edificio para considerarlo obstáculo (m)');
+    ('buffer_edificio_m', 15.0, 'Distancia máxima entre un tramo y un edificio para considerarlo obstáculo (m)'),
+    ('buffer_helipuerto_m', 150.0, 'Radio de exclusión alrededor de un helipuerto que OSM trae como punto (m)'),
+    -- Tarea 3, punto 5 (BD/probabilidades.sql). Supuestos académicos abstractos, no datos de un UAV real:
+    -- tasa de falla por km con la amenaza a intensidad máxima (r = 1); p = 1 - exp(-lambda * r * largo).
+    ('lambda_eventos_por_km',   0.12, 'Tasa de falla por km con densidad UCDP máxima (r_eventos = 1)'),
+    ('lambda_incendios_por_km', 0.10, 'Tasa de falla por km con densidad de incendios de guerra máxima (r_incendios = 1)'),
+    ('lambda_gnss_por_km',      0.03, 'Tasa de falla por km con la celda GPSJam en rojo todos los días (p_gnss = 1)'),
+    ('exposicion_nodo_km',      0.05, 'Exposición equivalente de un nodo (giro o espera), en km de vuelo');
 
 -- ---------------------------------------------------------------------------
 -- 6. Resultados: rutas calculadas y su evaluación de resiliencia
@@ -166,13 +202,18 @@ INSERT INTO parametros_pesos (clave, valor, descripcion) VALUES
 CREATE TABLE rutas (
     id           serial PRIMARY KEY,
     creada_utc   timestamptz NOT NULL DEFAULT now(),
-    metodo       text NOT NULL CHECK (metodo IN ('dijkstra', 'propuesta')),
+    -- Tarea 2: dijkstra, propuesta. Tarea 3: dijkstra_m, milp_gurobi, dijkstra_ponderado, aco.
+    metodo       text NOT NULL CHECK (metodo IN ('dijkstra', 'propuesta', 'dijkstra_m', 'milp_gurobi',
+                                                 'dijkstra_ponderado', 'aco')),
     rango        smallint NOT NULL CHECK (rango IN (1, 2)),   -- 1 = principal, 2 = alternativa
     origen       integer NOT NULL REFERENCES nodos (id),
     destino      integer NOT NULL REFERENCES nodos (id),
     largo_km     double precision NOT NULL,
     costo        double precision,                             -- costo del método (km o km equivalentes)
     riesgo_medio double precision,
+    tiempo_ms    double precision,                             -- Tarea 3: tiempo de cómputo de la técnica
+    fiabilidad   double precision,                             -- Tarea 3: prod (1 - p) de tramos y nodos
+    resiliencia  double precision,                             -- Tarea 3: misiones completadas en los sorteos
     aristas      integer[] NOT NULL,                           -- ids en orden de recorrido
     preferencias jsonb NOT NULL DEFAULT '{}',
     geom         geometry(LineString, 4326)
@@ -193,6 +234,19 @@ CREATE TABLE evaluaciones (
     delta_r_pp         double precision,           -- R_mision(C) - R_mision(A), en puntos porcentuales
     p_mcnemar          double precision,
     parametros         jsonb NOT NULL DEFAULT '{}'
+);
+
+-- Tarea 3: las 4 técnicas sobre los mismos sorteos 0-100 (comun/servicio.resolver_t3)
+CREATE TABLE evaluaciones_t3 (
+    id             serial PRIMARY KEY,
+    creada_utc     timestamptz NOT NULL DEFAULT now(),
+    origen         integer NOT NULL REFERENCES nodos (id),
+    destino        integer NOT NULL REFERENCES nodos (id),
+    secuencia      integer[] NOT NULL,                  -- origen, puntos intermedios y destino
+    n_sorteos      integer NOT NULL,
+    mas_resiliente text,                                -- técnica con mayor resiliencia
+    resultados     jsonb NOT NULL DEFAULT '{}',         -- por técnica: km, fiabilidad, resiliencia, tiempo_ms
+    parametros     jsonb NOT NULL DEFAULT '{}'          -- preferencias, capas consideradas y zonas del usuario
 );
 
 -- ---------------------------------------------------------------------------

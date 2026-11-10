@@ -30,7 +30,7 @@ def main() -> None:
     secuencia = meta.get("secuencia_mision", [])
     with conectar() as conn, conn.cursor() as cur:
         registrar_fuente(cur, "infraestructura", "infraestructura", fuente, relativa(INFRAESTRUCTURA_JSON))
-        cur.execute("TRUNCATE nodos, aristas, mision, rutas, evaluaciones RESTART IDENTITY CASCADE")
+        cur.execute("TRUNCATE nodos, aristas, mision, rutas, evaluaciones, evaluaciones_t3 RESTART IDENTITY CASCADE")
         cur.executemany(
             "INSERT INTO nodos (id, tipo, geom) VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326))",
             [(n["id"], n["tipo"], n["lon"], n["lat"]) for n in datos["nodos"]],

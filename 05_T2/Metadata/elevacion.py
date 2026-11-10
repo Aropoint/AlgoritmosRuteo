@@ -1,9 +1,10 @@
-"""Metadata 2: elevación del terreno en nodos y puntos medios de tramo (Open-Meteo Elevation API) -> JSON.
+"""Metadata 2: elevación del terreno en los nodos y a lo largo de cada tramo (Open-Meteo Elevation API) -> JSON.
 
 Fuente del modelo: Copernicus DEM GLO-90 (90 m), servido por Open-Meteo sin clave.
-Uso en el ruteo (restricción dura, rúbrica 6.1): el UAV vuela a altura constante
-sobre el despegue; el relieve relativo de cada tramo se suma a la altura de los
-edificios para decidir si el tramo es admisible (ver comun/transformar.py).
+Uso en el ruteo (restricción dura, rúbrica 6.1 y Tarea 3 punto 2): el UAV vuela a altura constante
+sobre el despegue; el relieve relativo de cada tramo se suma a la altura de los edificios para decidir
+si el tramo es sobrevolable (ver comun/transformar.py). Cada tramo se muestrea cada ~90 m, la
+resolución del modelo, para que una loma a mitad de camino no quede entre dos muestras.
 
 Requiere Infraestructura/salida/infraestructura.json (los puntos a consultar).
 
@@ -13,6 +14,7 @@ Salida: Metadata/salida/elevacion.json (estructura en ESTRUCTURA_elevacion_json.
 from __future__ import annotations
 
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -25,15 +27,24 @@ from comun.red import descargar  # noqa: E402
 SALIDA = Path(__file__).resolve().parent / "salida" / "elevacion.json"
 URL = "https://api.open-meteo.com/v1/elevation"
 POR_CONSULTA = 100  # máximo de coordenadas por llamada que admite la API
+PASO_KM = 0.09      # separación entre muestras de un tramo: la resolución de GLO-90
+
+
+def muestras_tramo(largo_km: float, paso_km: float = PASO_KM) -> list[float]:
+    """Fracciones (0, 1) del tramo donde se toma una muestra; los extremos son los nodos."""
+    n = max(1, math.ceil(largo_km / paso_km) - 1)
+    return [k / (n + 1) for k in range(1, n + 1)]
 
 
 def puntos_a_consultar(infra: dict) -> list[dict]:
     nodos = {n["id"]: n for n in infra["nodos"]}
-    puntos = [{"tipo": "nodo", "ref_id": n["id"], "lat": n["lat"], "lon": n["lon"]} for n in infra["nodos"]]
+    puntos = [{"tipo": "nodo", "ref_id": n["id"], "orden": 0, "lat": n["lat"], "lon": n["lon"]} for n in infra["nodos"]]
     for a in infra["aristas"]:
         u, v = nodos[a["source"]], nodos[a["target"]]
-        puntos.append({"tipo": "punto_medio", "ref_id": a["id"],
-                       "lat": round((u["lat"] + v["lat"]) / 2, 6), "lon": round((u["lon"] + v["lon"]) / 2, 6)})
+        for k, f in enumerate(muestras_tramo(a["largo_km"]), start=1):
+            puntos.append({"tipo": "muestra", "ref_id": a["id"], "orden": k,
+                           "lat": round(u["lat"] + f * (v["lat"] - u["lat"]), 6),
+                           "lon": round(u["lon"] + f * (v["lon"] - u["lon"]), 6)})
     return puntos
 
 
@@ -62,11 +73,12 @@ def main() -> None:
             "licencia": "CC BY 4.0 (Open-Meteo); Copernicus DEM © DLR e.V. 2010-2014 y © Airbus Defence and Space "
                         "GmbH 2014-2018, provisto bajo COPERNICUS por la Unión Europea y la ESA",
             "generado_utc": ahora_utc(),
-            "parametros": {"resolucion_m": 90, "puntos": len(puntos), "por_consulta": POR_CONSULTA},
+            "parametros": {"resolucion_m": 90, "paso_muestras_km": PASO_KM, "puntos": len(puntos),
+                           "por_consulta": POR_CONSULTA},
             "resumen": {"min_m": min(valores) if valores else None, "max_m": max(valores) if valores else None},
             "advertencias": [
                 "GLO-90 es un modelo de superficie: incluye en parte vegetación y edificios.",
-                "Con 90 m de resolución, un tramo de ~0,5 km se muestrea solo en sus extremos y su punto medio.",
+                "Cada tramo se muestrea cada ~90 m (la resolución del modelo) además de sus dos nodos.",
             ],
         },
         "puntos": puntos,

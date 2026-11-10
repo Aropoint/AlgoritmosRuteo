@@ -51,6 +51,9 @@ class Preferencias:
     desvio_max: float = 0.35               # alfa: estiramiento máximo de candidatas vs. la más corta
     presupuesto_extra: float = 0.60        # beta: km máximos = (1 + beta) * misión mínima sin fallas
     peso_riesgo: float = 1.0               # w_R: aversión a sectores con amenazas históricas
+    # Tarea 3 (restricciones que impone la aplicación del usuario)
+    autonomia_km: float | None = None      # km máximos de vuelo; None = (1 + beta) * misión mínima
+    prob_exito_min: float = 0.85           # R_min: fiabilidad mínima prod(1 - p) de la ruta
 
 
 @dataclass(frozen=True)
@@ -88,6 +91,56 @@ class ParametrosFlota:
     prob_deteccion: float = 0.5
 
 
+@dataclass(frozen=True)
+class Considerar:
+    """Qué metadata y amenazas entran al cálculo (casillas "Considerar" del panel de control, punto 4)."""
+    edificios: bool = True          # altura de edificios OSM como obstáculo
+    relieve: bool = True            # perfil del terreno como obstáculo
+    viento: bool = True             # factor de viento de frente en el costo
+    zonas_publicadas: bool = True   # aeródromos y helipuertos OSM como zona no sobrevolable
+    eventos: bool = True            # amenaza UCDP en la probabilidad de falla
+    incendios: bool = True          # amenaza de incendios de guerra
+    gnss: bool = True               # amenaza GPSJam
+    zonas_usuario: bool = True      # zonas prohibidas y de amenaza dibujadas por el usuario
+
+    def amenazas(self) -> tuple[str, ...]:
+        return tuple(k for k in ("eventos", "incendios", "gnss", "zonas_usuario") if getattr(self, k))
+
+
+@dataclass(frozen=True)
+class ParametrosResiliencia:
+    """Sorteos 0-100 y vuelo simulado de la métrica de resiliencia (ruteo/resiliencia_t3.py, punto 8)."""
+    n_sorteos: int = 300
+    # Prob. de notar que el tramo o nodo siguiente falló antes de entrar (mismo supuesto que la flota de la
+    # Tarea 2). Si lo nota se desvía; si no, entra y el UAV se pierde.
+    prob_deteccion: float = 0.5
+
+
+@dataclass(frozen=True)
+class ParametrosACO:
+    """Colonia de hormigas (ruteo/hormigas.py). Valores fijados antes de evaluar."""
+    n_hormigas: int = 40
+    iteraciones: int = 80
+    alfa: float = 1.0            # peso de la feromona
+    beta: float = 3.0            # peso de la heurística de distancia (costo del arco + costo que falta hasta t)
+    gamma: float = 2.0           # peso de la heurística de fiabilidad (1 - p) del arco
+    rho: float = 0.1             # evaporación
+    sin_mejora: int = 20         # corte: iteraciones seguidas sin mejorar
+    penalizacion: float = 10.0   # M: castigo por violar la fiabilidad mínima o la autonomía
+    semilla: int = 1
+
+
+# Perfiles de aplicación (Tarea 3, punto 3): restricciones que impone el uso que el usuario le da al UAV.
+# Supuestos académicos; "personalizado" deja los valores por defecto de Preferencias.
+PERFILES = {
+    "inspeccion": {"nombre": "Inspección de daños", "altura_vuelo_m": 60.0, "margen_vertical_m": 10.0,
+                   "prob_exito_min": 0.85, "peso_riesgo": 1.0, "velocidad_crucero_m_s": 12.0},
+    "entrega": {"nombre": "Entrega de insumos médicos", "altura_vuelo_m": 80.0, "margen_vertical_m": 15.0,
+                "prob_exito_min": 0.92, "peso_riesgo": 2.0, "velocidad_crucero_m_s": 15.0},
+    "personalizado": {"nombre": "Personalizado"},
+}
+
+
 @dataclass
 class Configuracion:
     malla: ParametrosMalla = field(default_factory=ParametrosMalla)
@@ -107,4 +160,5 @@ SEMILLAS = {
     "ajuste": range(0, 100),
     "evaluacion": range(10_000, 10_300),
     "sitio": range(20_000, 20_100),
+    "sorteos": range(30_000, 32_000),  # Tarea 3: sorteos 0-100 de la resiliencia por técnica (punto 8)
 }

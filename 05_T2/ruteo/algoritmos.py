@@ -86,6 +86,38 @@ def dijkstra(
     return Ruta(nodos[::-1], aristas[::-1])
 
 
+def distancias(
+    g: Grafo,
+    origen: int,
+    costo: Costo,
+    bloqueadas: frozenset[int] | set[int] = frozenset(),
+    hacia_origen: bool = False,
+) -> dict[int, float]:
+    """Costo mínimo desde `origen` a todos los nodos (Dijkstra completo).
+
+    Con hacia_origen=True devuelve el costo mínimo de cada nodo HASTA `origen`, recorriendo los
+    arcos al revés: importa cuando el costo depende del sentido (viento). Lo usan la poda exacta
+    del MILP y la heurística de la colonia de hormigas (Tarea 3).
+    """
+    dist = {origen: 0.0}
+    cola = [(0.0, origen)]
+    cerrados: set[int] = set()
+    while cola:
+        d, w = heapq.heappop(cola)
+        if w in cerrados:
+            continue
+        cerrados.add(w)
+        for u, aid in g.ady[w]:
+            if aid in bloqueadas or u in cerrados:
+                continue
+            c = costo(aid, u, w) if hacia_origen else costo(aid, w, u)
+            nd = d + c
+            if nd < dist.get(u, math.inf):
+                dist[u] = nd
+                heapq.heappush(cola, (nd, u))
+    return dist
+
+
 def yen(
     g: Grafo,
     s: int,

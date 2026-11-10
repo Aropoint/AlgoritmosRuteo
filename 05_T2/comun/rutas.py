@@ -38,20 +38,31 @@ def grafo_desde_bd(conn, elevacion_origen_m: float | None) -> Grafo:
 
     En `altura_max_edificio_m` se guarda el obstáculo relativo al despegue
     (relieve + edificio), que es lo que ruteo.pesos compara con altura_vuelo - margen.
+    Para la Tarea 3 se guardan además las dos partes por separado (`edificio_m`, `relieve_m`),
+    para que las casillas "Considerar" decidan cuál entra, y la probabilidad de falla por amenaza
+    (`pf`) de tramos y nodos (BD/probabilidades.sql).
     """
     lat0, lon0 = centro_aoi()
     g = Grafo(ProyeccionLocal(lat0, lon0))
-    for nid, tipo, lat, lon in conn.execute("SELECT id, tipo, ST_Y(geom), ST_X(geom) FROM nodos ORDER BY id"):
-        g.agregar_nodo(nid, lat, lon, tipo)
+    for nid, tipo, lat, lon, elev, pe, pi, pg in conn.execute(
+            """SELECT id, tipo, ST_Y(geom), ST_X(geom), elevacion_m, pf_eventos, pf_incendios, pf_gnss
+               FROM nodos ORDER BY id"""):
+        n = g.agregar_nodo(nid, lat, lon, tipo)
+        n.atributos = {"elevacion_m": elev, "pf": {"eventos": pe, "incendios": pi, "gnss": pg}}
     filas = conn.execute(
-        """SELECT id, source, target, largo_km, riesgo, altura_max_edificio_m, terreno_max_m, en_zona_restringida
+        """SELECT id, source, target, largo_km, riesgo, altura_max_edificio_m, terreno_max_m, en_zona_restringida,
+                  pf_eventos, pf_incendios, pf_gnss
            FROM aristas ORDER BY id"""
     )
-    for aid, u, v, largo, riesgo, altura_edificio, terreno, zona in filas:
-        atributos = {"riesgo": riesgo, "en_zona_restringida": zona}
+    for aid, u, v, largo, riesgo, altura_edificio, terreno, zona, pe, pi, pg in filas:
+        atributos = {"riesgo": riesgo, "en_zona_restringida": zona,
+                     "pf": {"eventos": pe, "incendios": pi, "gnss": pg}}
         obstaculo = obstaculo_relativo_m(altura_edificio, terreno, elevacion_origen_m)
         if obstaculo is not None:
             atributos["altura_max_edificio_m"] = obstaculo
+        atributos["edificio_m"] = altura_edificio
+        atributos["relieve_m"] = (round(terreno - elevacion_origen_m, 2)
+                                  if terreno is not None and elevacion_origen_m is not None else None)
         g.aristas[aid] = Arista(aid, u, v, largo, atributos)
         g.ady[u].append((v, aid))
         g.ady[v].append((u, aid))

@@ -21,6 +21,7 @@ class Nodo:
     lon: float
     tipo: str = "navegacion"  # navegacion | inicio | observacion | destino
     xy: tuple[float, float] = (0.0, 0.0)
+    atributos: dict = field(default_factory=dict)  # Tarea 3: elevación y probabilidad de falla ("pf")
 
 
 @dataclass

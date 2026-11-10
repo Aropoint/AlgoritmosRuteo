@@ -22,10 +22,13 @@ def main() -> None:
     with conectar() as conn, conn.cursor() as cur:
         fid = registrar_fuente(cur, "elevacion", "metadata", datos["metadatos"], relativa(ENTRADA))
         cur.execute("DELETE FROM meta_elevacion")
+        # Un elevacion.json anterior a la Tarea 3 trae "punto_medio" (una muestra por tramo): se carga como muestra 1.
         cur.executemany(
-            """INSERT INTO meta_elevacion (tipo, ref_id, elevacion_m, geom, fuente_id)
-               VALUES (%s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s)""",
-            [(p["tipo"], p["ref_id"], p["elevacion_m"], p["lon"], p["lat"], fid) for p in datos["puntos"]],
+            """INSERT INTO meta_elevacion (tipo, ref_id, orden, elevacion_m, geom, fuente_id)
+               VALUES (%s, %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s)""",
+            [("muestra" if p["tipo"] == "punto_medio" else p["tipo"], p["ref_id"],
+              p.get("orden", 1 if p["tipo"] == "punto_medio" else 0), p["elevacion_m"], p["lon"], p["lat"], fid)
+             for p in datos["puntos"]],
         )
         cur.execute("SELECT count(*), min(elevacion_m), max(elevacion_m) FROM meta_elevacion")
         total, minimo, maximo = cur.fetchone()

@@ -10,12 +10,22 @@ SET elevacion_m = e.elevacion_m
 FROM meta_elevacion e
 WHERE e.tipo = 'nodo' AND e.ref_id = n.id;
 
--- GREATEST ignora los NULL: solo queda NULL si no hay ningún dato.
+-- Perfil del tramo (Tarea 3, punto 2): máximo entre los dos extremos y las muestras tomadas cada
+-- ~90 m a lo largo del tramo (Metadata/elevacion.py). GREATEST ignora los NULL: solo queda NULL si
+-- no hay ningún dato.
 UPDATE aristas a
 SET terreno_max_m = GREATEST(
     (SELECT elevacion_m FROM nodos WHERE id = a.source),
     (SELECT elevacion_m FROM nodos WHERE id = a.target),
-    (SELECT elevacion_m FROM meta_elevacion WHERE tipo = 'punto_medio' AND ref_id = a.id));
+    (SELECT max(elevacion_m) FROM meta_elevacion WHERE tipo = 'muestra' AND ref_id = a.id));
+
+-- ---------------------------------------------------------------------------
+-- Zonas restringidas publicadas (OSM aeroway): un tramo que las toca no es sobrevolable.
+-- ---------------------------------------------------------------------------
+UPDATE aristas a
+SET en_zona_restringida = EXISTS (
+    SELECT 1 FROM meta_zonas_restringidas z
+    WHERE z.geom && a.geom AND ST_Intersects(z.geom, a.geom));
 
 -- ---------------------------------------------------------------------------
 -- Metadata 1 (edificios OSM): edificio más alto a menos de buffer_edificio_m del tramo.
