@@ -11,9 +11,9 @@ Hay cinco grupos de tablas:
 | Grupo | Tablas | Para qué |
 |---|---|---|
 | **Infraestructura** | `nodos`, `aristas`, `mision` | El grafo de navegación `G = (V, E)` que recorre pgRouting y la secuencia de puntos de la misión. |
-| **Metadata** | `meta_edificios`, `meta_elevacion`, `meta_viento` | Datos del entorno que se convierten en **restricciones** (altura, relieve, viento máximo) y en el factor de viento del costo. |
-| **Amenazas** | `amz_gpsjam_celdas`, `amz_incendios`, `amz_eventos` | Registros externos de amenaza que se convierten en **pesos de riesgo** de cada arista y en focos de las fallas simuladas. |
-| **Resultados** | `rutas`, `evaluaciones` | Pares de rutas calculados (Dijkstra y propuesta) y su resiliencia. |
+| **Metadata** | `meta_edificios`, `meta_elevacion`, `meta_viento`, `meta_zonas_restringidas` | Datos del entorno que se convierten en **restricciones** (altura, relieve con perfil cada ~90 m, zonas restringidas, viento máximo) y en el factor de viento del costo. |
+| **Amenazas** | `amz_gpsjam_celdas`, `amz_incendios`, `amz_eventos` | Registros externos de amenaza que se convierten en **pesos de riesgo** de cada arista, en la **probabilidad de falla** de tramos y nodos (Tarea 3, `probabilidades.sql`) y en focos de las fallas simuladas. |
+| **Resultados** | `rutas`, `evaluaciones`, `evaluaciones_t3` | Rutas calculadas (Tarea 2: Dijkstra y propuesta; Tarea 3: las cuatro técnicas con tiempo de cómputo, fiabilidad y resiliencia) y sus evaluaciones. |
 | **Soporte** | `fuentes`, `parametros_pesos` | Procedencia de cada carga (URL, licencia, fecha, parámetros) y parámetros de la asignación de pesos. |
 
 Las tablas de metadata y amenazas guardan el dato tal como viene de la fuente, transformado al mínimo. La conversión a atributos de arista la hace [`pesos.sql`](pesos.sql) en un paso aparte. Así se puede recalcular el grafo con otros parámetros sin volver a descargar nada.
@@ -30,11 +30,18 @@ erDiagram
     fuentes ||--o{ amz_gpsjam_celdas : "fuente_id"
     fuentes ||--o{ amz_incendios : "fuente_id"
     fuentes ||--o{ amz_eventos : "fuente_id"
+    fuentes ||--o{ meta_zonas_restringidas : "fuente_id"
+    nodos ||--o{ evaluaciones_t3 : "origen / destino"
 
     nodos {
         integer id PK
         text tipo "navegacion, inicio, observacion, destino"
         float elevacion_m "terreno; NULL = sin dato"
+        float r_eventos "intensidad 0 a 1"
+        float pf_eventos "p de falla (T3)"
+        float pf_incendios "p de falla (T3)"
+        float pf_gnss "p de falla (T3)"
+        float pf_total "p de falla (T3)"
         geometry geom "Point 4326"
     }
     aristas {
@@ -42,6 +49,7 @@ erDiagram
         integer source FK
         integer target FK
         float largo_km "costo de la linea base"
+        float largo_m "generada: pgr_dijkstra en metros (T3)"
         float rumbo_grados "source a target"
         float altura_max_edificio_m "restriccion"
         float terreno_max_m "restriccion"
@@ -50,6 +58,10 @@ erDiagram
         float r_incendios "0 a 1"
         float p_gnss "0 a 1"
         float riesgo "0 a 1, combinado"
+        float pf_eventos "p de falla (T3)"
+        float pf_incendios "p de falla (T3)"
+        float pf_gnss "p de falla (T3)"
+        float pf_total "p de falla (T3)"
         geometry geom "LineString 4326"
     }
     mision {
@@ -70,7 +82,8 @@ erDiagram
     }
     meta_elevacion {
         serial id PK
-        text tipo "nodo o punto_medio"
+        text tipo "nodo o muestra"
+        smallint orden "posicion en el tramo"
         integer ref_id
         float elevacion_m
         geometry geom "Point 4326"
@@ -117,12 +130,15 @@ erDiagram
     }
     rutas {
         serial id PK
-        text metodo "dijkstra o propuesta"
+        text metodo "T2 dijkstra o propuesta; T3 dijkstra_m, milp_gurobi, dijkstra_ponderado, aco"
         smallint rango "1 o 2"
         integer origen FK
         integer destino FK
         float largo_km
         float costo
+        float tiempo_ms "T3"
+        float fiabilidad "T3"
+        float resiliencia "T3"
         integer_array aristas
         jsonb preferencias
         geometry geom "LineString 4326"
@@ -139,6 +155,24 @@ erDiagram
         float r_mision_propuesta
         float delta_r_pp
         float p_mcnemar
+    }
+    evaluaciones_t3 {
+        serial id PK
+        integer origen FK
+        integer destino FK
+        integer_array secuencia
+        integer n_sorteos
+        text mas_resiliente
+        jsonb resultados "por tecnica"
+        jsonb parametros
+    }
+    meta_zonas_restringidas {
+        serial id PK
+        text clase "aeroway"
+        text nombre
+        float buffer_m
+        geometry geom "MultiPolygon 4326"
+        integer fuente_id FK
     }
     fuentes {
         serial id PK
@@ -184,3 +218,30 @@ SELECT * FROM pgr_KSP(
 ```
 
 `comun/rutas.py` arma estas consultas. Las `<excluidas>` son las aristas que no cumplen las restricciones duras según las preferencias del usuario, y son las mismas para ambos métodos.
+
+## Tarea 3: probabilidad de falla y las cuatro técnicas
+
+[`probabilidades.sql`](probabilidades.sql), que ejecuta `BD/probabilidades.py` después de `pesos.sql`, calcula la intensidad de cada amenaza también en los **nodos** y, para tramos y nodos, la probabilidad de falla por amenaza (`pf_eventos`, `pf_incendios`, `pf_gnss`) y la combinada (`pf_total`):
+
+```
+p_i = 1 - exp(-lambda_i^max * r_i * L)        L = largo del tramo, o exposicion_nodo_km en un nodo
+p   = 1 - prod_i (1 - p_i)
+```
+
+Los `lambda_i^max` y `exposicion_nodo_km` son filas de `parametros_pesos`, así que se ajustan sin tocar el código. Detalle en [`ESTRUCTURA_probabilidades_json.md`](ESTRUCTURA_probabilidades_json.md).
+
+```sql
+-- 6.1: solo la distancia en metros (largo_m es una columna generada)
+SELECT * FROM pgr_dijkstra(
+  'SELECT id, source, target, largo_m AS cost, largo_m AS reverse_cost FROM aristas WHERE id NOT IN (<no sobrevolables>)',
+  :origen, :destino, directed => true);
+
+-- 6.3: con los parámetros del MILP. comun/tecnicas.py carga en la tabla temporal t3_arcos los costos
+-- dirigidos de cada tramo sobrevolable (c = 1000 * d * f_viento y l = -ln(1-p) con las amenazas consideradas)
+-- y busca lambda por bisección hasta cumplir la fiabilidad mínima.
+SELECT * FROM pgr_dijkstra(
+  'SELECT id, source, target, c_ida + :lambda * l_ida AS cost, c_vuelta + :lambda * l_vuelta AS reverse_cost FROM t3_arcos',
+  :origen, :destino, directed => true);
+```
+
+El MILP (6.2, Gurobi) y la colonia de hormigas (6.4) trabajan sobre el grafo que `comun/rutas.grafo_desde_bd` reconstruye con los mismos ids. Cada consulta del sitio guarda las cuatro rutas en `rutas`, con `tiempo_ms`, `fiabilidad` y `resiliencia`, y su comparación en `evaluaciones_t3`.

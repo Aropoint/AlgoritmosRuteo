@@ -299,3 +299,102 @@ Cuatro consecuencias que conviene declarar antes de presentar:
 4. Comparar las rutas de pgRouting con las de Python (`ruteo/algoritmos.py`) sobre el mismo grafo. Pueden diferir solo en empates.
 5. Generalización: repetir la comparación de la flota en otras mallas y misiones (otras semillas de `ParametrosMalla`).
 6. **Trabajo futuro que pidió el profesor y no está:** contexto de defensa antiaérea (*"misiles tierra-aire que han destruido drones"*). No hay fuente pública adecuada; conviene declararlo en vez de omitirlo.
+
+---
+
+## 13. Tarea 3: cuatro técnicas, probabilidad de falla y resiliencia
+
+Guía de la entrega y guion del video en [ENTREGA_TAREA3.md](ENTREGA_TAREA3.md). Esta sección formaliza lo que se agregó.
+
+### 13.1. Probabilidad de falla de tramos y nodos · `BD/probabilidades.sql`, `ruteo/probabilidad.py`
+
+Cada amenaza *i* tiene una intensidad `r_i ∈ [0, 1]` por tramo (§3) y ahora también por nodo. Se modela como una **tasa de falla por km** proporcional a esa intensidad:
+
+```
+lambda_i = lambda_i^max · r_i        p_i(e) = 1 − exp(−lambda_i · L_e)        p_i(v) = 1 − exp(−lambda_i · L_0)
+p = 1 − Π_i (1 − p_i)                (amenazas independientes; solo las marcadas como «Considerar»)
+```
+
+- **Parámetros por defecto** (`parametros_pesos`, supuestos abstractos): `lambda^max` = 0,12 (UCDP), 0,10 (incendios) y 0,03 (GPSJam) fallas por km; `L_0` = 0,05 km.
+- **Zonas de amenaza del usuario:** discos abstractos con su probabilidad `p_zona`, que se suma como una componente más a todo tramo o nodo que tocan.
+- **Puntos obligatorios** (origen, intermedios y destino): tienen p = 0, porque son comunes a todas las técnicas y no las distinguen.
+- **Por qué este modelo:** un tramo más largo queda más expuesto, y `−ln(1 − p)` es aditivo sobre la ruta. Por eso la fiabilidad `F = Π(1 − p)` entra de forma **exacta y lineal** en Dijkstra y en el MILP.
+
+### 13.2. Grafo sobrevolable (punto 2)
+
+- **Tramos no sobrevolables:** las cuatro técnicas usan el mismo grafo, sin los tramos excluidos. El motivo de cada exclusión es uno de cuatro: edificio + relieve ≥ altura − margen, relieve solo, zona restringida publicada (OSM `aeroway`, helipuertos con 150 m de protección) o zona prohibida dibujada por el usuario.
+- **Perfil de terreno:** cada tramo se muestrea cada ~90 m (Copernicus GLO-90). Son 3.850 muestras, contra las 618 de un punto medio por tramo de la Tarea 2.
+- **Efecto:** a 60 m de altura, 92 tramos no son sobrevolables (80 por edificio, 10 por relieve y 2 por la zona); a 40 m, 242.
+
+### 13.3. Las técnicas · `comun/tecnicas.py`, `ruteo/modelo_t3.py`, `ruteo/optimizacion.py`, `ruteo/hormigas.py`
+
+Notación por arco dirigido `a = (u → v)`:
+
+- `d_a`: largo del tramo;
+- `f_a`: factor de viento de frente (§3);
+- `c_a = d_a · f_a`: tiempo de vuelo × velocidad de crucero;
+- `l_a = −ln(1 − p_e) − ln(1 − p_v)`: tramo más nodo de llegada.
+
+Las cuatro técnicas:
+
+1. **`pgr_dijkstra` en metros:** `cost = reverse_cost = largo_m`.
+2. **MILP (Gurobi 13, licencia de `pip`).** Variables `x_a ∈ {0, 1}`; objetivo `min Σ c_a x_a`; restricciones:
+   - conservación de flujo;
+   - `Σ_in(v) x ≤ 1` (no repite nodos);
+   - `Σ d_a x_a ≤ B` (autonomía);
+   - `Σ l_a x_a ≤ −ln(R_min)` (fiabilidad);
+   - sin variables para los tramos no sobrevolables.
+
+   Es un camino mínimo con restricciones de recursos (RCSP). Detalles de la resolución:
+   - **Poda exacta:** se conservan los nodos con `dist(s, v) + dist(v, t) ≤ B`, y lo mismo para cada arco.
+   - **Ciclos:** con costos positivos y restricciones `≤`, un ciclo aislado no mejora el objetivo. Igual se verifica, y se corta si aparece.
+   - **Infactible:** se resuelve `min Σ l_a x_a` sujeto a la autonomía, es decir, la máxima fiabilidad posible.
+   - **Puntos intermedios:** se resuelve tramo a tramo, con `B_k = B · L*_k / L*` y `R_k = R_min^(L*_k / L*)`.
+3. **`pgr_dijkstra` ponderado.** Es la relajación lagrangiana de la restricción de fiabilidad: costo `c_a + λ · l_a`, cargado en una tabla temporal con los costos dirigidos.
+   - λ se busca por bisección logarítmica en [10⁻², 10⁴] km, con a lo más 14 llamadas a `pgr_dijkstra`, como el menor que cumple R_min.
+   - Al subir λ, ni la fiabilidad ni el costo del camino bajan, así que el menor λ factible da el camino factible más barato de esa familia.
+   - La autonomía se verifica después.
+4. **Colonia de hormigas** (Ant System con cotas MMAS; Dorigo, Maniezzo y Colorni, 1996; Stützle y Hoos, 2000).
+   - Probabilidad de elegir un arco ∝ `τ^α · (1/(c + h))^β · ((1 − p_e)(1 − p_v))^γ`, con `h` el costo mínimo que falta hasta t.
+   - Aptitud: `C · (1 + M · exceso relativo de fiabilidad y de autonomía)`.
+   - Valores por defecto: 40 hormigas, 80 iteraciones, α = 1, β = 3, γ = 2, ρ = 0,1, M = 10, corte tras 20 iteraciones sin mejora y semilla fija.
+
+### 13.4. Sorteo 0–100 y resiliencia · `ruteo/sorteo.py`, `ruteo/resiliencia_t3.py`
+
+**Sorteo (punto 7).** Para cada tramo y nodo se sortea `n ~ U[0, 100)` con semilla, siempre en orden de id. Hay falla si `n > 100 · (1 − p)`, lo que ocurre con probabilidad exactamente `p`. Un nodo que falla inutiliza sus tramos.
+
+**Resiliencia (punto 8).** `R_k` es la fracción de N = 300 sorteos (los mismos para las cuatro técnicas) en que la misión se completa dentro de la autonomía:
+
+- el UAV sigue la ruta de la técnica *k*;
+- antes de entrar a un tramo o nodo caído, lo nota con probabilidad `p_det` = 0,5, el mismo supuesto de la flota (§10);
+- si lo nota, replanifica con Dijkstra ponderado sobre lo que sabe que sigue en pie; si no, se pierde;
+- la decisión «lo nota» depende solo de (semilla, elemento), así que la comparación es pareada.
+
+`R` combina lo que la ruta absorbe (no topa la falla) y lo que recupera (la rodea). Como la política de recuperación es común, la diferencia de `R` se debe a la ruta inicial. Se informa también:
+
+- `F_k`: la fiabilidad analítica;
+- la fracción de sorteos con la ruta intacta, que valida el sorteo frente a `F_k`;
+- el diferencial frente a `pgr_dijkstra` (m), con McNemar exacta.
+
+### 13.5. Resultados (inicio → destino, «Inspección de daños», R_min = 0,85)
+
+| Técnica | km | F | R | cómputo |
+|---|---|---|---|---|
+| `pgr_dijkstra` (m) | 8,46 | 0,740 | 88,0 % | 4 ms |
+| MILP | 9,71 | 0,858 | 93,3 % | 81 ms (1.015 variables, 373 restricciones) |
+| `pgr_dijkstra` ponderado | 9,71 | 0,858 | 93,3 % | 15 ms (λ = 11,9 km) |
+| ACO | 10,63 | 0,882 | **95,3 %** | 314 ms |
+
+**Lectura honesta:**
+
+- **ACO es la más resiliente porque su ruta es más larga** (+9,5 % frente al óptimo del MILP), no porque optimice mejor.
+- **El MILP hace lo que se le pide:** la ruta más rápida que cumple R_min.
+- **La relajación lagrangiana llegó al mismo óptimo que el MILP**, sin brecha en las consultas probadas.
+- **Con los tres puntos de observación**, R_min = 0,85 es inalcanzable: la fiabilidad máxima es 0,649 y el MILP lo informa.
+- **Caso de ejemplo (punto 9, `BD/caso_ejemplo.py`, R_min = 0,70).** Una zona de amenaza (400 m, p = 0,6) sobre la mitad de la ruta corta deja a `pgr_dijkstra` (m) con R = 48,7 %. Las otras tres la rodean por 116 m más y conservan R = 86,3 %.
+
+### 13.6. Límites agregados
+
+- Los `lambda^max`, `L_0` y `p_det` son supuestos. Las amenazas se tratan como independientes, y GPSJam sigue sin variar dentro del AOI (§11.1).
+- La descomposición por tramos de la misión con puntos intermedios no garantiza el óptimo conjunto.
+- La malla no se densifica: con 0,25 km superaría la licencia restringida de Gurobi.

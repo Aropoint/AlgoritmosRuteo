@@ -1,6 +1,22 @@
 # 05_T2: ruteo físico resiliente de UAV
 
-Nueva propuesta de la Tarea 2. Un UAV simulado recorre puntos de inspección sobre un grafo geolocalizado (Mykolaiv, referencia provisional). Comparamos **Dijkstra por km** (`pgr_dijkstra`) con **Yen + selección resiliente + replanificación** (`pgr_KSP` + selección propia) frente a fallas espaciales reproducibles. La metadata y las amenazas salen de fuentes públicas.
+**Tarea 3 (entrega final, noviembre de 2026).** Sobre el mismo grafo sobrevolable se comparan cuatro técnicas: `pgr_dijkstra` con la distancia en metros, un **MILP con Gurobi**, `pgr_dijkstra` ponderado (relajación lagrangiana del MILP) y una **colonia de hormigas**. Cada amenaza es una probabilidad de falla de tramos y nodos (`BD/probabilidades.py`). Un sorteo 0–100 decide qué falla, y la resiliencia de cada técnica se mide sobre los mismos sorteos. Guía punto por punto y guion del video: **[ENTREGA_TAREA3.md](ENTREGA_TAREA3.md)**.
+
+```bash
+git clone <URL del repositorio en GitLab> ruteo-uav && cd ruteo-uav
+docker compose up --build        # http://localhost:8000 (≈ 1,5 min la primera vez; usa la instantánea de datos)
+```
+
+| Consulta por defecto (inicio → destino, R_min = 0,85) | km | F = Π(1 − p) | R | cómputo |
+|---|---|---|---|---|
+| `pgr_dijkstra` (metros) | 8,46 | 0,740 | 88,0 % | 4 ms |
+| MILP con Gurobi | 9,71 | 0,858 | 93,3 % | 81 ms |
+| `pgr_dijkstra` ponderado | 9,71 | 0,858 | 93,3 % | 15 ms |
+| Colonia de hormigas | 10,63 | 0,882 | 95,3 % ★ | 314 ms |
+
+---
+
+Propuesta de la Tarea 2. Un UAV simulado recorre puntos de inspección sobre un grafo geolocalizado (Mykolaiv, referencia provisional). Comparamos **Dijkstra por km** (`pgr_dijkstra`) con **Yen + selección resiliente + replanificación** (`pgr_KSP` + selección propia) frente a fallas espaciales reproducibles. La metadata y las amenazas salen de fuentes públicas.
 
 **Flota con aviso compartido** (`ruteo/flota.py`, PROPUESTA_TECNICA §10):
 - **Flota:** de 3 a 5 UAV que hacen la misma misión.
@@ -16,6 +32,7 @@ En el sitio se puede animar un escenario con aviso y sin aviso.
 
 | Documento | Para qué |
 |---|---|
+| [ENTREGA_TAREA3.md](ENTREGA_TAREA3.md) | **Tarea 3: cada punto del enunciado → archivo y qué mostrar, y guion del video.** |
 | [ENTREGA_TAREA2.md](ENTREGA_TAREA2.md) | **Cada criterio de la rúbrica → archivo y evidencia.** Guía para la presentación. |
 | [PROPUESTA_TECNICA.md](PROPUESTA_TECNICA.md) | Formalización: fallas, pesos, restricciones, algoritmo, métricas, protocolo y resultados preliminares. |
 | [BD/MODELO_BD.md](BD/MODELO_BD.md) | Modelo de la base de datos, diagrama y consultas pgRouting. |
@@ -32,11 +49,13 @@ docker compose up -d --build        # lo mismo, en segundo plano; avance con: do
 docker compose down                 # detiene; los datos de la BD se conservan (volumen db_data)
 ```
 
-`docker compose up` levanta dos servicios: `db` (PostgreSQL + PostGIS + pgRouting) y `main`, que ejecuta el `main.py` de esta carpeta: primero el pipeline y después, en el mismo contenedor, el sitio en **http://localhost:8000**. Dos variables cambian lo que hace `main.py`:
+`docker compose up` levanta dos servicios: `db` (PostgreSQL + PostGIS + pgRouting) y `main`, que ejecuta el `main.py` de esta carpeta: primero el pipeline y después, en el mismo contenedor, el sitio en **http://localhost:8000**. Estas variables cambian lo que hace `main.py`:
 
 | Variable | Efecto |
 |---|---|
-| `SIN_DESCARGA=1` | Reutiliza los JSON ya generados; no llama a las APIs |
+| `USAR_INSTANTANEA=1` (por defecto) | Restaura los JSON versionados en `Datos/instantanea/` (SHA-256 verificado) y no llama a las APIs: la misma BD del video, en ≈ 35 s |
+| `USAR_INSTANTANEA=0` | Descarga todo de las seis APIs públicas (Overpass puede tardar más de 10 min) |
+| `SIN_DESCARGA=1` | Con `USAR_INSTANTANEA=0`: reutiliza los JSON locales ya generados |
 | `SOLO_SITIO=1` | No corre el pipeline: levanta el sitio sobre la BD existente |
 
 Se fijan en `.env` o antes del comando: `SIN_DESCARGA=1 docker compose up` en bash, o `$env:SIN_DESCARGA=1; docker compose up` en PowerShell. El `.env` va en `05_T2/`; sin él, Compose usa los valores de `.env.example`, incluidas las fechas de la ventana de datos. La BD no se publica fuera de Docker; para consultarla: `docker compose exec db psql -U postgres -d ruteo_uav`.
@@ -46,7 +65,7 @@ Se fijan en `.env` o antes del comando: `SIN_DESCARGA=1 docker compose up` en ba
 El servicio `pruebas` corre las pruebas y el servicio `app` acepta cualquier comando dentro de `05_T2/`:
 
 ```bash
-docker compose run --rm pruebas                                                          # 36 pruebas del núcleo, la flota y el ETL
+docker compose run --rm pruebas                                                          # 55 pruebas: núcleo, flota, ETL y Tarea 3 (MILP, ACO, sorteo)
 docker compose run --rm app python pipeline.py --solo metadata,amenazas,pesos,rutas     # parte del pipeline
 docker compose run --rm app python experimentos/run_experimentos.py --conjunto ajuste                 # A/B/D/C0/C1/C, ~12 s
 docker compose run --rm app python experimentos/run_experimentos.py --conjunto ajuste --sensibilidad  # prob_foco x n_fallas, ~2 min
@@ -64,29 +83,33 @@ docker compose run --rm app python experimentos/run_flota.py --conjunto ajuste -
 ├── docker-compose.yml             Servicios db, main, pruebas y app (.env.example: variables opcionales)
 ├── Dockerfile, requirements.txt   Imagen de la aplicación (ETL, cargas, sitio)
 ├── pipeline.py                    Orden de ejecución del ETL (lo llama main.py en el servicio main)
-├── ruteo/                         Núcleo algorítmico (stdlib): grafo, Dijkstra, Yen, selección, fallas, simulador, flota, métricas
-├── comun/                         Compartido: ajustes, transformaciones, descargas, BD, rutas pgRouting, resiliencia, servicio
-├── BD/                            schema.sql, MODELO_BD.md, crear_bd.py, pesos.sql + asignar_pesos.py, rutas_ejemplo.py, diagrama_bd.py
+├── ruteo/                         Núcleo (stdlib salvo Gurobi): grafo, Dijkstra, Yen, fallas, simulador, flota, métricas;
+│                                  Tarea 3: probabilidad, modelo_t3, optimizacion (Gurobi), hormigas (ACO), sorteo, resiliencia_t3
+├── comun/                         Compartido: ajustes, transformaciones, descargas, BD, rutas pgRouting, tecnicas (Tarea 3), servicio
+├── BD/                            schema.sql, MODELO_BD.md, pesos.sql, probabilidades.sql + .py (punto 5), rutas_ejemplo.py,
+│                                  caso_ejemplo.py (punto 9), diagrama_bd.py
 ├── Infraestructura/               generar_infraestructura.py, cargar_infraestructura.py, ESTRUCTURA_*.md
-├── Metadata/                      osm_edificios, elevacion, viento: extracción, carga y ESTRUCTURA_*.md de cada uno
+├── Metadata/                      osm_edificios, elevacion (perfil cada ~90 m), viento, zonas_restringidas: extracción, carga, ESTRUCTURA_*.md
 ├── Amenazas/                      gpsjam, incendios_guerra, ucdp_eventos: extracción, carga y ESTRUCTURA_*.md
-├── SitioWeb/                      app.py (FastAPI) + static/ (Leaflet)
+├── SitioWeb/                      app.py (FastAPI, /api/t3/*) + static/ (Leaflet: consulta, panel de control, 4 rutas, sorteo)
+├── Datos/                         instantanea.py + instantanea/ (los 7 JSON descargados, comprimidos y con SHA-256)
 ├── experimentos/                  run_experimentos.py (un UAV) y run_flota.py (flota con aviso), con semillas
 ├── resultados/                    JSON de los experimentos
-└── tests/                         test_ruteo.py (núcleo), test_flota.py (flota y avisos), test_etl.py (transformaciones)
+└── tests/                         test_ruteo.py, test_flota.py, test_etl.py y test_t3.py (probabilidad, sorteo, MILP, ACO, resiliencia)
 ```
 
 En `05_T2/` también están `main.py`, `docker-compose.yml` y `.env.example`. Así la carpeta es autocontenida: al subirla como repositorio de entrega, `main.py` queda en su raíz, como pide el punto 9 del enunciado.
 
 ## Fuentes
 
-Ninguna de las seis fuentes externas pide credenciales.
+Ninguna de las siete fuentes externas pide credenciales.
 
 | Rol | Fuente | Se convierte en |
 |---|---|---|
 | Metadata 1 | OpenStreetMap (Overpass): edificios con altura | Restricción: altura de obstáculos por tramo |
 | Metadata 2 | Open-Meteo Elevation (Copernicus DEM GLO-90) | Restricción: relieve relativo al despegue |
 | Metadata 3 | Open-Meteo Historical Weather (ERA5): viento a 100 m | Restricción: viento máximo. Peso: factor de viento de frente |
+| Metadata 4 (Tarea 3) | OpenStreetMap (Overpass): aeródromos y helipuertos (`aeroway`) | Restricción: zona restringida publicada (bloqueo) |
 | Amenaza 1 | GPSJam: degradación GNSS por celda H3 | Peso: `p_gnss` |
 | Amenaza 2 | The Economist war-fire model (NASA FIRMS) | Peso: `r_incendios`. Focos de las fallas simuladas |
 | Amenaza 3 | UCDP GED (vía HDX) | Peso: `r_eventos` |

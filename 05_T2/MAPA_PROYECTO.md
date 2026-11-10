@@ -81,7 +81,9 @@ La historia del proyecto en tres pasos:
 |---|---|
 | `CONTEXTO_PROPUESTA_RUTEO_RESILIENTE_UAV_TAREA2.md` | Contexto y propuesta para el grupo (documento base). |
 | `MAPA_PROYECTO.md` | Este mapa. |
-| `PROPUESTA_TECNICA.md` | Formalización del algoritmo, del modelo de fallas, de las métricas y del protocolo experimental, con resultados preliminares. |
+| `PROPUESTA_TECNICA.md` | Formalización del algoritmo, del modelo de fallas, de las métricas y del protocolo experimental, con resultados preliminares. §13: Tarea 3. |
+| `ENTREGA_TAREA3.md` | Tarea 3: punto del enunciado → archivo, qué mostrar y guion del video. |
+| `Datos/` | Instantánea versionada de los JSON descargados (replicar sin red). |
 | `README.md` | Cómo ejecutar, estado y próximos pasos. |
 | `ruteo/` | Núcleo en Python, solo con biblioteca estándar: grafo, Dijkstra, Yen, selección resiliente, fallas, simulador y métricas. |
 | `Infraestructura/` | Generador del grafo → `salida/infraestructura.json` + documento de su estructura (rúbrica punto 1). |
