@@ -1,13 +1,16 @@
-"""Orquestador de la Tarea 2 (punto 9 del enunciado). Corre DENTRO de Docker: `docker compose up`
-lo ejecuta en el servicio `main`; en el equipo solo hace falta Docker con Compose v2.
+"""Orquestador de las Tareas 2 y 3. Corre DENTRO de Docker: `docker compose up` lo ejecuta en el
+servicio `main`; en el equipo solo hace falta Docker con Compose v2.
 
-1. Ejecuta pipeline.py (misma carpeta): esquema, infraestructura, descarga y carga de las
-   3 metadata y las 3 amenazas, pesos, rutas de ejemplo (pgr_dijkstra y pgr_KSP) y diagrama de la BD.
+1. Ejecuta pipeline.py (misma carpeta): esquema, infraestructura, metadata y amenazas (desde la
+   instantánea versionada o descargándolas), pesos, probabilidad de falla de tramos y nodos, rutas de
+   ejemplo, caso de ejemplo de la Tarea 3 y diagrama de la BD.
 2. Levanta el sitio web (FastAPI + Leaflet), que queda en http://localhost:8000 (o WEB_PORT).
 
 Variables de entorno (en .env o antes del comando):
-    SIN_DESCARGA=1   reutiliza los JSON ya generados (no llama a las APIs)
-    SOLO_SITIO=1     no corre el pipeline: levanta el sitio sobre la BD existente
+    USAR_INSTANTANEA=1  (por defecto) restaura los JSON de Datos/instantanea/: misma BD que el video, sin red
+    USAR_INSTANTANEA=0  descarga todo de las APIs (Overpass puede tardar más de 10 min)
+    SIN_DESCARGA=1      con USAR_INSTANTANEA=0: reutiliza los JSON locales ya generados
+    SOLO_SITIO=1        no corre el pipeline: levanta el sitio sobre la BD existente
 
 Uso, desde esta carpeta (donde están main.py y docker-compose.yml):
     docker compose up --build            # todo
@@ -36,7 +39,11 @@ def main() -> None:
     if activa("SOLO_SITIO"):
         print("SOLO_SITIO=1: se omite el pipeline y se usa la BD existente.", flush=True)
     else:
-        comando = [sys.executable, "pipeline.py"] + (["--sin-descarga"] if activa("SIN_DESCARGA") else [])
+        if activa("USAR_INSTANTANEA"):
+            opcion = ["--instantanea"]
+        else:
+            opcion = ["--sin-descarga"] if activa("SIN_DESCARGA") else []
+        comando = [sys.executable, "pipeline.py", *opcion]
         print("$", " ".join(["python", *comando[1:]]), flush=True)
         if subprocess.run(comando, cwd=APP).returncode != 0:
             sys.exit("El pipeline falló en un paso obligatorio; revisa el resumen de arriba.")

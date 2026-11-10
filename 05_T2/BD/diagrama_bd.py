@@ -35,7 +35,7 @@ GRUPOS = [  # (título, color, prefijo o nombres)
     ("Infraestructura", "#dbeafe", ("nodos", "aristas", "mision")),
     ("Metadata", "#dcfce7", ("meta_",)),
     ("Amenazas", "#fee2e2", ("amz_",)),
-    ("Resultados", "#fef9c3", ("rutas", "evaluaciones")),
+    ("Resultados", "#fef9c3", ("rutas", "evaluaciones", "evaluaciones_t3")),
     ("Soporte", "#f3f4f6", ("fuentes", "parametros_pesos")),
 ]
 

@@ -1,12 +1,14 @@
 """Pipeline ETL completo. Lo invoca main.py (misma carpeta) dentro del contenedor `main` de docker compose.
 
-Orden: esquema -> infraestructura -> 3 metadata -> 3 amenazas -> pesos -> rutas de ejemplo -> diagrama.
+Orden: esquema -> infraestructura -> 4 metadata -> 3 amenazas -> pesos y probabilidad de falla ->
+rutas de ejemplo y caso de ejemplo de la Tarea 3 -> diagrama.
 Cada fuente externa es opcional: si su descarga falla, el pipeline sigue y el
 peso o la restricción correspondiente queda neutro (un dato ausente no bloquea).
-Los pasos obligatorios (esquema, infraestructura, pesos, rutas) detienen el pipeline.
+Los pasos obligatorios (esquema, infraestructura, pesos, probabilidades, rutas) detienen el pipeline.
 
 Uso:
-    python pipeline.py                  # todo
+    python pipeline.py                  # todo, descargando de las APIs
+    python pipeline.py --instantanea    # restaura los JSON versionados en Datos/instantanea/ y no descarga
     python pipeline.py --sin-descarga   # no llama a las APIs: carga los JSON que ya existen
     python pipeline.py --solo bd,infra  # solo esos grupos (bd, infra, metadata, amenazas, pesos, rutas, diagrama)
 """
@@ -31,6 +33,8 @@ PASOS = [
     ("metadata", "Metadata/cargar_elevacion.py", False, False),
     ("metadata", "Metadata/viento.py", True, False),
     ("metadata", "Metadata/cargar_viento.py", False, False),
+    ("metadata", "Metadata/zonas_restringidas.py", True, False),
+    ("metadata", "Metadata/cargar_zonas_restringidas.py", False, False),
     ("amenazas", "Amenazas/gpsjam.py", True, False),
     ("amenazas", "Amenazas/cargar_gpsjam.py", False, False),
     ("amenazas", "Amenazas/incendios_guerra.py", True, False),
@@ -38,7 +42,9 @@ PASOS = [
     ("amenazas", "Amenazas/ucdp_eventos.py", True, False),
     ("amenazas", "Amenazas/cargar_ucdp_eventos.py", False, False),
     ("pesos", "BD/asignar_pesos.py", False, True),
+    ("pesos", "BD/probabilidades.py", False, True),  # Tarea 3, punto 5: probabilidad de falla por tramo y nodo
     ("rutas", "BD/rutas_ejemplo.py", False, True),
+    ("rutas", "BD/caso_ejemplo.py", False, False),  # Tarea 3, punto 9: ruta alternativa frente a una amenaza
     ("diagrama", "BD/diagrama_bd.py", False, False),
 ]
 
@@ -46,12 +52,20 @@ PASOS = [
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sin-descarga", action="store_true", help="no ejecuta los scripts de extracción")
+    ap.add_argument("--instantanea", action="store_true",
+                    help="restaura los JSON de Datos/instantanea/ (SHA-256 verificado) y no descarga")
     ap.add_argument("--solo", default="", help="grupos separados por coma")
     args = ap.parse_args()
     grupos = {g.strip() for g in args.solo.split(",") if g.strip()}
 
+    pasos = list(PASOS)
+    if args.instantanea:
+        args.sin_descarga = True
+        pasos.insert(0, ("datos", "Datos/instantanea.py restaurar", False, True))
+        grupos = grupos | {"datos"} if grupos else grupos
+
     resumen = []
-    for grupo, script, extraccion, obligatorio in PASOS:
+    for grupo, script, extraccion, obligatorio in pasos:
         if grupos and grupo not in grupos:
             continue
         if extraccion and args.sin_descarga:
@@ -59,7 +73,7 @@ def main() -> int:
             continue
         print(f"\n=== {script}", flush=True)
         t0 = time.perf_counter()
-        ok = subprocess.run([sys.executable, script], cwd=BASE).returncode == 0
+        ok = subprocess.run([sys.executable, *script.split()], cwd=BASE).returncode == 0
         resumen.append((script, "ok" if ok else "FALLÓ", time.perf_counter() - t0))
         if not ok and obligatorio:
             print(f"\nPaso obligatorio fallido: {script}. Se detiene el pipeline.")
@@ -72,7 +86,7 @@ def main() -> int:
     if fallos:
         print("\nLas fuentes que fallaron quedan sin datos (peso o restricción neutros). "
               "Reintenta con:  docker compose run --rm app python pipeline.py --solo metadata,amenazas,pesos,rutas")
-    obligatorios = {s for _, s, _, o in PASOS if o}
+    obligatorios = {s for _, s, _, o in pasos if o}
     return 1 if any(f in obligatorios for f in fallos) else 0
 
 

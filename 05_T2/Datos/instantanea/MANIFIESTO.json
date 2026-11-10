@@ -1,0 +1,75 @@
+{
+ "descripcion": "Instantánea versionada de los JSON descargados (Tarea 3, punto 1: replicar la ejecución desde GitLab).",
+ "archivos": [
+  {
+   "archivo": "Metadata/salida/osm_edificios.json",
+   "comprimido": "osm_edificios.json.gz",
+   "bytes": 12473717,
+   "bytes_comprimido": 1668313,
+   "sha256": "040b23ac99158ceaa546beaeeb921b272433c92541dc87b84679dc638f9d0a39",
+   "fuente": "OpenStreetMap vía Overpass API",
+   "descargado_utc": "2026-11-05T20:42:17+00:00",
+   "licencia": "ODbL 1.0 (© colaboradores de OpenStreetMap)"
+  },
+  {
+   "archivo": "Metadata/salida/elevacion.json",
+   "comprimido": "elevacion.json.gz",
+   "bytes": 518524,
+   "bytes_comprimido": 46837,
+   "sha256": "506aca6994d76f04ae352eb3c57641a3529eb6ae8cb4f2212817ae4e2da23ba9",
+   "fuente": "Open-Meteo Elevation API (Copernicus DEM GLO-90)",
+   "descargado_utc": "2026-11-10T23:35:02+00:00",
+   "licencia": "CC BY 4.0 (Open-Meteo); Copernicus DEM © DLR e.V. 2010-2014 y © Airbus Defence and Space GmbH 2014-2018, provisto bajo COPERNICUS por la Unión Europea y la ESA"
+  },
+  {
+   "archivo": "Metadata/salida/viento.json",
+   "comprimido": "viento.json.gz",
+   "bytes": 88941,
+   "bytes_comprimido": 7748,
+   "sha256": "1c876a2eedea3faabb0506409e739cfe30724aafdde5130af2218e778f35a3b5",
+   "fuente": "Open-Meteo Historical Weather API (reanálisis ERA5)",
+   "descargado_utc": "2026-11-05T20:42:40+00:00",
+   "licencia": "CC BY 4.0, uso no comercial (Open-Meteo); ERA5 © Copernicus Climate Change Service"
+  },
+  {
+   "archivo": "Metadata/salida/zonas_restringidas.json",
+   "comprimido": "zonas_restringidas.json.gz",
+   "bytes": 2180,
+   "bytes_comprimido": 831,
+   "sha256": "b76aea5c7d5e173e84012a7d7f07ded454b777c4ec59223991af63b7280c7a12",
+   "fuente": "OpenStreetMap vía Overpass API (aeroway)",
+   "descargado_utc": "2026-11-10T23:28:43+00:00",
+   "licencia": "ODbL 1.0 (© colaboradores de OpenStreetMap)"
+  },
+  {
+   "archivo": "Amenazas/salida/gpsjam.json",
+   "comprimido": "gpsjam.json.gz",
+   "bytes": 5798,
+   "bytes_comprimido": 1302,
+   "sha256": "f1d71dd39f5c5429a9e512a62559caf9542adcca388213c577f068aa735bb60e",
+   "fuente": "GPSJam (datos ADS-B agregados por celda H3)",
+   "descargado_utc": "2026-11-05T20:42:45+00:00",
+   "licencia": "Sin licencia declarada por el sitio; citar gpsjam.org"
+  },
+  {
+   "archivo": "Amenazas/salida/incendios_guerra.json",
+   "comprimido": "incendios_guerra.json.gz",
+   "bytes": 5270,
+   "bytes_comprimido": 1197,
+   "sha256": "08eb0c9099c8e58f59d2f99f726c8950e874f2ca30353a9dd155825f4b96929c",
+   "fuente": "The Economist war-fire model (sobre NASA FIRMS VIIRS)",
+   "descargado_utc": "2026-11-05T20:42:52+00:00",
+   "licencia": "Datos CC BY 4.0 (The Economist); focos FIRMS de NASA, uso abierto con atribución"
+  },
+  {
+   "archivo": "Amenazas/salida/ucdp_eventos.json",
+   "comprimido": "ucdp_eventos.json.gz",
+   "bytes": 21813,
+   "bytes_comprimido": 1768,
+   "sha256": "c5fd2d385234b6e7811a465e3d9fba079161aca60ab79ff6bb452e2b3af386a8",
+   "fuente": "UCDP Georeferenced Event Dataset (GED), Ucrania, vía HDX",
+   "descargado_utc": "2026-11-05T20:42:56+00:00",
+   "licencia": "CC BY-IGO según HDX (UCDP: CC BY 4.0). Citar Sundberg y Melander (2013) y Davies et al."
+  }
+ ]
+}

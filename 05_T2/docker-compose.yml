@@ -49,6 +49,7 @@ services:
     command: ["python", "main.py"]
     environment:
       <<: *app-env
+      USAR_INSTANTANEA: ${USAR_INSTANTANEA:-1}
       SIN_DESCARGA: ${SIN_DESCARGA:-0}
       SOLO_SITIO: ${SOLO_SITIO:-0}
       WEB_PORT: ${WEB_PORT:-8000}
